@@ -1,7 +1,12 @@
-# Threat Model v0
+# Threat Model v0 → v2 (in progress)
 
-**Status**: living document. v0 is the Phase-0 baseline; revised at
-Phase 2 exit and before the Phase 4 pen test.
+**Status**: living document. v0 is the Phase-0 baseline. v2 is being
+assembled as Phase 3 work lands (Vault migration, observability proxy,
+WebAuthn enforcement). Until all three are in production this header
+stays "in progress"; the document is updated incrementally so each
+merged sprint that changes a security boundary updates its flow
+immediately rather than batching at phase exit. v2 will be cut and
+frozen once Sprint 5 ships.
 
 ## Scope
 
@@ -55,8 +60,9 @@ email and display name.
 
 ### Open gaps
 
-- MFA (WebAuthn) not yet enforced for Admin/Owner roles — Phase 3
-  scope.
+- ~~MFA (WebAuthn) not yet enforced for Admin/Owner roles — Phase 3
+  scope.~~ **Closed Sprint 5 / PR #9–12.** WebAuthn assertion is now
+  enforced for every Owner/Admin write route. See Flow 6.
 
 ---
 
@@ -193,6 +199,93 @@ defends in depth.
 
 ---
 
+## Flow 6 — WebAuthn MFA ceremony (session upgrade)
+
+**Actors**: authenticated user (partial session), browser WebAuthn API
+(platform authenticator or hardware key), Kubinate API, Postgres
+(`sessions` + `user_passkeys` tables).
+**Data**: random WebAuthn challenge (per-ceremony UUID stored
+server-side), authenticator data (AAGUID, rpIdHash, flags, sign
+counter), CBOR-encoded assertion signature, session cookie, sign
+counter delta.
+**Boundaries crossed**: browser ↔ Cloudflare ↔ API (challenge
+request + assertion response); browser ↔ local authenticator hardware
+(sign challenge — never leaves the device).
+
+### Background
+
+Sprint 4 ticket 05 + Sprint 5 ticket 07 shipped MFA enforcement for
+Owner and Admin roles. The login flow now has two states:
+
+- **Full session** (`mfa_satisfied = true`): issued for Member-role
+  users and for Owner/Admin users who have already passed the
+  assertion. Grants access to all routes.
+- **Partial session** (`mfa_satisfied = false`): issued for
+  Owner/Admin users with a registered passkey. Allows access to
+  `/v1/me` and `/v1/auth/passkey/*` only. All other Owner/Admin
+  write routes return 401 `mfa_required`.
+
+The MFA ceremony is the transition path from partial → full session.
+It is also the only path; we deliberately do not fall back to passwords
+or TOTP (see [ADR-0013](../adr/0013-webauthn-device-lifecycle.md)).
+
+### Flow sequence
+
+```
+browser → GET /v1/auth/passkey/assert/start
+API    → generate challenge (random UUID), store in ceremonies table
+          (single-use, 5-min TTL; DELETE … RETURNING on consume)
+API    → return PublicKeyCredentialRequestOptions (challenge + rpId
+          + allowCredentials list scoped to this user's live passkeys)
+browser → authenticator signs challenge
+browser → POST /v1/auth/passkey/assert/finish  {assertion JSON}
+API    → consume ceremony row (prevents replay; second call gets 404)
+API    → verify signature against stored credential public key
+API    → check sign counter: must be > last recorded counter
+          (regression → 401 + passkey marked for review)
+API    → UPDATE sessions SET mfa_satisfied = TRUE WHERE id = $session_id
+API    → UPDATE user_passkeys SET sign_counter, credential, last_used_at
+          (atomic: counter + blob move together; see ADR-0013 §sign-counter)
+API    → return 200; browser proceeds to the protected route
+```
+
+### STRIDE
+
+| Threat | Description | Control |
+|---|---|---|
+| **S** | Attacker replays a captured assertion response. | Challenge is a random UUID consumed atomically via `DELETE … RETURNING`; second presentation finds no row and returns 401. The sign counter must also advance — a replayed assertion with a stale counter fails the regression check. |
+| **S** | Attacker presents a credential belonging to a different user. | `assert_finish` loads `allowCredentials` from `user_passkeys WHERE user_id = $session_user_id`; a cross-user credential id is simply not in the list and the authenticator will not produce a valid signature for it. |
+| **S** | Attacker clones a passkey (soft-copy of the private key). | Sign-counter regression detection: a cloned authenticator will eventually produce a counter that has already been seen. The API returns 401 and emits an audit entry; ADR-0013 §sign-counter documents the exact detection window and why we do not auto-revoke on first anomaly. |
+| **T** | Assertion response tampered in transit (altered rpIdHash or flags). | `webauthn-rs` verifies `rpIdHash` matches the configured RP ID and checks the `UP` flag; any mismatch fails signature verification before the session is promoted. |
+| **T** | `user_passkeys.credential` blob stale after a failed mid-update crash. | Sign-counter + blob are updated in the same SQL statement (`UPDATE … SET sign_counter = $c, credential = $b, last_used_at = now() WHERE id = $id`); partial application is impossible without Postgres-level row corruption. |
+| **R** | User denies having completed an assertion ceremony. | `passkey.asserted` audit entry written by `audit_passkey_event_for_user_with_decision` before the session is promoted; entry carries `session_id`, `credential_id`, sign counter, IP, UA, and request ID. Entry lands in the per-tenant hash chain. |
+| **I** | Challenge or assertion response logged. | Ceremony state is stored server-side only (never echoed back in logs); assertion response JSON is deserialized into structured types before any logging; the raw CBOR body is never passed to `tracing!`. |
+| **I** | Credential public key exfiltrated from the DB. | Public keys are not secret by WebAuthn design (they are used for verification, not derivation); the material the attacker would need — the private key — never leaves the authenticator hardware. |
+| **D** | Attacker floods ceremony start to exhaust the challenges table. | Sessions table already rate-limited at login. Ceremony start is gated behind a valid session cookie; unauthenticated callers cannot reach it. Per-session ceremony table rows auto-expire (5-min TTL). |
+| **E** | An attacker who can write to the `sessions` table directly flips `mfa_satisfied = true`. | Requires DB compromise (beyond the threat model boundary for this flow); mitigated by RLS + audit trigger on `sessions` mutations; Vault-backed short-lived DB credentials (Sprint 5) further narrow the window. |
+| **E** | Partial-session bearer used to call Owner/Admin routes directly (bypass the ceremony). | `OwnerActor` extractor checks `session.mfa_satisfied` before the role check; the check runs inside the API process, not at the DB layer, so a network-level bypass would also need to forge a signed session cookie. |
+
+### Recovery path (lost passkey)
+
+Recovery codes are the alternate path; see
+[`docs/runbooks/owner-passkey-lost.md`](../runbooks/owner-passkey-lost.md)
+and [ADR-0013](../adr/0013-webauthn-device-lifecycle.md) §Recovery.
+Recovery-code redemption follows the same session-promotion logic
+(`mark_mfa_satisfied`) with its own audit entry.
+
+### Open gaps
+
+- **Authenticator attestation is not verified.** We accept `none`
+  attestation; FIPS-only customers would require `packed` or `tpm`
+  attestation. Tracked in ADR-0013 as a named revisit trigger.
+- **Short-lived cert rotation for the sign-counter anomaly case.** When
+  a regression is detected we currently return 401 and log; we do not
+  auto-revoke the passkey (ADR-0013 §sign-counter rationale). A
+  future ticket should add an optional "flag and notify" webhook so
+  security teams can investigate potential cloning.
+
+---
+
 ## Cross-cutting concerns
 
 - **Supply chain**: `cargo audit` + `cargo deny` in CI, Dependabot,
@@ -215,6 +308,14 @@ defends in depth.
 
 ## v2 open requirements (tracked here, addressed at v2 cut)
 
+- **WebAuthn MFA enforcement boundary.** ✅ **Content landed** (this
+  document, Flow 6, Sprint 5 PRs #9–12). The flow covers the full
+  session-upgrade ceremony, including sign-counter replay/clone
+  detection, audit-chain wiring, and the recovery-code alternate path.
+  Two open gaps remain (attestation verification, clone-detect webhook)
+  and are tracked in [ADR-0013](../adr/0013-webauthn-device-lifecycle.md).
+  This requirement closes when Sprint 5 ships and v2 is frozen.
+
 - **Secret-store boundary moves from pgcrypto to Vault.** Sprint 4
   ticket 02 delivers the partial scope (`VaultStore` impl, parity
   tests, Ansible role, runbook stub at
@@ -225,6 +326,7 @@ defends in depth.
   in Flow 2 closes at that point. Until v2 ships, Flow 2 still
   reflects the pgcrypto reality. Cross-reference:
   [ADR-0007](../adr/0007-secret-management.md) §Long term.
+
 - **Agent reverse-tunnel auth boundary.** Tracked separately under
   [ADR-0014](../adr/0014-agent-reverse-tunnel-wire-format.md);
   v2 of Flow 5 will replace the placeholder STRIDE entries with the
