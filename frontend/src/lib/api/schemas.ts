@@ -194,11 +194,27 @@ export const createInviteResponseSchema = z.object({
 });
 export type CreateInviteResponse = z.infer<typeof createInviteResponseSchema>;
 
-/** What `GET /v1/me` returns — the resolved actor. */
+/**
+ * Four-state MFA hint surfaced via `/v1/me` so the dashboard can
+ * route the user without inferring state from a 401 round-trip.
+ *
+ * - `not_required` — Member / Developer / Viewer; voluntary MFA only.
+ * - `must_enrol` — Owner/Admin with no passkey registered. Banner
+ *   prompting `/app/settings/security`.
+ * - `must_assert` — Owner/Admin with a passkey but the current
+ *   session hasn't satisfied the assertion. Route to the challenge.
+ * - `enrolled` — Owner/Admin, passkey registered, session satisfied.
+ *   Dashboard runs unrestricted.
+ */
+export const mfaStateSchema = z.enum(['not_required', 'must_enrol', 'must_assert', 'enrolled']);
+export type MfaState = z.infer<typeof mfaStateSchema>;
+
+/** What `GET /v1/me` returns — the resolved actor + MFA state. */
 export const meViewSchema = z.object({
   user_id: z.string().uuid(),
   session_id: z.string().uuid(),
-  organization_id: z.string().uuid()
+  organization_id: z.string().uuid(),
+  mfa_state: mfaStateSchema
 });
 export type MeView = z.infer<typeof meViewSchema>;
 

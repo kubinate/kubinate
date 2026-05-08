@@ -65,6 +65,7 @@ use tower_http::{
 
 use crate::{
     auth::{AuthConfig, SharedGithubClient},
+    problem::ApiError,
     rate_limit::RateLimiter,
 };
 
@@ -431,15 +432,22 @@ struct Version {
     git_sha: Option<&'static str>,
 }
 
-/// `GET /v1/me` — returns the resolved actor so the SPA can populate
-/// org-aware UIs without hardcoding the id. Pure read of what the
-/// actor extractor already computed.
-async fn me(actor: actor::Actor) -> Json<MeView> {
-    Json(MeView {
+/// `GET /v1/me` — returns the resolved actor + MFA state so the SPA
+/// can populate org-aware UIs and route the user to the right MFA
+/// flow without inferring state from 401 round-trips.
+///
+/// `mfa_state` resolves the four-state matrix described on
+/// [`kubinate_identity::session::MfaState`]. Sprint 4 ticket 05's
+/// SPA hint deferred row + Sprint 5 ticket 07.
+async fn me(State(state): State<AppState>, actor: actor::Actor) -> Result<Json<MeView>, ApiError> {
+    let mfa_state =
+        kubinate_identity::session::mfa_state(&state.db, actor.user_id, actor.session_id).await?;
+    Ok(Json(MeView {
         user_id: actor.user_id,
         session_id: actor.session_id,
         organization_id: actor.organization_id,
-    })
+        mfa_state,
+    }))
 }
 
 #[derive(Serialize)]
@@ -447,6 +455,7 @@ struct MeView {
     user_id: uuid::Uuid,
     session_id: uuid::Uuid,
     organization_id: uuid::Uuid,
+    mfa_state: kubinate_identity::session::MfaState,
 }
 
 async fn version() -> Json<Version> {
