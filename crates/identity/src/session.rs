@@ -130,37 +130,35 @@ pub async fn issue_partial_mfa(
 /// Decide whether the OAuth callback should issue a partial session
 /// for `user_id`.
 ///
-/// The condition the ticket commits to: `users.mfa_enrolled = TRUE`
-/// AND the user holds at least one Owner or Admin membership that
-/// hasn't been soft-deleted. Members and viewers can register
-/// passkeys (the `mfa_enrolled` bit will flip true) but the gate
-/// still doesn't fire for them — voluntary MFA stays voluntary
-/// until a follow-up flips the policy.
+/// Reads `users.requires_mfa AND users.mfa_enrolled`. The two
+/// columns are deliberately decoupled:
 ///
-/// Single round-trip: the existence subquery short-circuits in
-/// Postgres so the membership scan stops at the first match.
+/// * `requires_mfa` is the **policy bit** — does the user hold any
+///   role that mandates MFA? Maintained by the
+///   `memberships_requires_mfa_sync` trigger (migration
+///   `20260508174335_users_requires_mfa.sql`); a role mutation
+///   updates the column atomically.
+/// * `mfa_enrolled` is the **state bit** — does the user have any
+///   live passkey? Maintained by `PgPasskeyRepository::insert` and
+///   `revoke`.
+///
+/// A user with `requires_mfa = TRUE AND mfa_enrolled = FALSE`
+/// (Owner/Admin who hasn't enrolled yet) does **not** issue a
+/// partial session: there's no credential to satisfy the
+/// challenge, and forcing the partial state would lock the user
+/// out of `/app/settings/security` (the only place they can
+/// enrol). Sprint 5 ticket 07's SPA `mfa_state` field surfaces
+/// "must_enrol" so the dashboard nudges the user; this helper
+/// stays the gate the OAuth callback consults.
 pub async fn user_requires_partial_session(
     pool: &PgPool,
     user_id: Uuid,
 ) -> Result<bool, PlatformError> {
-    let row: Option<(bool,)> = sqlx::query_as(
-        r"
-        SELECT (
-          u.mfa_enrolled
-          AND EXISTS (
-            SELECT 1 FROM memberships m
-            WHERE m.user_id = u.id
-              AND m.deleted_at IS NULL
-              AND m.role IN ('owner', 'admin')
-          )
-        )
-        FROM users u
-        WHERE u.id = $1
-        ",
-    )
-    .bind(user_id)
-    .fetch_optional(pool)
-    .await?;
+    let row: Option<(bool,)> =
+        sqlx::query_as("SELECT (requires_mfa AND mfa_enrolled) FROM users WHERE id = $1")
+            .bind(user_id)
+            .fetch_optional(pool)
+            .await?;
     Ok(row.map_or(false, |(b,)| b))
 }
 
