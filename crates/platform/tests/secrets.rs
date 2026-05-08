@@ -9,8 +9,9 @@
 //! kubinate-platform --test secrets`. In CI the harness provides both.
 
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
-use kubinate_platform::secrets::{
-    InMemoryVaultTransit, PgcryptoStore, SecretRef, SecretStore, VaultStore,
+use kubinate_platform::{
+    db,
+    secrets::{InMemoryVaultTransit, PgcryptoStore, SecretRef, SecretStore, VaultStore},
 };
 use rand::RngCore;
 use secrecy::{ExposeSecret, SecretString};
@@ -67,18 +68,15 @@ async fn roundtrip_preserves_plaintext(pool: PgPool) {
     );
 }
 
-// `#[ignore]` until the Postgres role split lands: the test Postgres
-// bootstrap user (`POSTGRES_USER` in docker-compose, same in CI) is a
-// superuser, and Postgres superusers inherently bypass row-level
-// security regardless of `FORCE ROW LEVEL SECURITY`. The RLS policy
-// + `app_current_tenant_id()` function are correct; the test setup
-// just can't exercise them as long as it connects as the bootstrap
-// user. Follow-up: create a NOSUPERUSER `kubinate_app` role in a
-// migration + have the pool connect as it for tests, or use
-// `SET LOCAL ROLE` in the store methods. Tracked as a Sprint 4
-// follow-up; the production deploy won't run as a superuser so the
-// invariant holds in prod regardless.
-#[ignore = "Postgres superuser bypass — see comment above"]
+// Postgres superusers inherently bypass row-level security even when
+// `FORCE ROW LEVEL SECURITY` is set, and `#[sqlx::test]` hands us a
+// pool that authenticates as the bootstrap user (a superuser in dev
+// + CI). To actually exercise RLS we route the store's queries
+// through `db::app_role_pool`, which issues `SET ROLE kubinate_app`
+// on every acquired connection. The seed runs on the original pool
+// because seeding rows requires the bootstrap user's elevated
+// privileges. See migration `20260508120000_kubinate_app_role.sql`
+// and Sprint 4 ticket 07.
 #[sqlx::test(migrations = "../../migrations")]
 async fn rls_blocks_cross_tenant_get(pool: PgPool) {
     let org_a = Uuid::now_v7();
@@ -86,7 +84,8 @@ async fn rls_blocks_cross_tenant_get(pool: PgPool) {
     seed_org(&pool, org_a, "acme").await;
     seed_org(&pool, org_b, "globex").await;
 
-    let store = PgcryptoStore::new(pool.clone(), fresh_kek()).expect("valid KEK");
+    let app_pool = db::app_role_pool(&pool).await.expect("app-role pool");
+    let store = PgcryptoStore::new(app_pool, fresh_kek()).expect("valid KEK");
 
     let handle = store
         .put(org_a, SecretString::from("tenant-a-only".to_string()))
@@ -183,8 +182,7 @@ async fn vault_roundtrip_preserves_plaintext(pool: PgPool) {
     );
 }
 
-// Same superuser-bypass caveat as `rls_blocks_cross_tenant_get`.
-#[ignore = "Postgres superuser bypass — see rls_blocks_cross_tenant_get comment"]
+// Same `db::app_role_pool` indirection as `rls_blocks_cross_tenant_get`.
 #[sqlx::test(migrations = "../../migrations")]
 async fn vault_rls_blocks_cross_tenant_get(pool: PgPool) {
     let org_a = Uuid::now_v7();
@@ -192,7 +190,8 @@ async fn vault_rls_blocks_cross_tenant_get(pool: PgPool) {
     seed_org(&pool, org_a, "acme").await;
     seed_org(&pool, org_b, "globex").await;
 
-    let store = vault_store(pool.clone());
+    let app_pool = db::app_role_pool(&pool).await.expect("app-role pool");
+    let store = vault_store(app_pool);
 
     let handle = store
         .put(org_a, SecretString::from("tenant-a-only".to_string()))
@@ -210,6 +209,38 @@ async fn vault_rls_blocks_cross_tenant_get(pool: PgPool) {
             Err(kubinate_platform::secrets::SecretError::NotFound(_))
         ),
         "expected NotFound for cross-tenant access, got {result:?}",
+    );
+}
+
+// Regression guard: if a future change accidentally drops the
+// `SET ROLE kubinate_app` from `db::app_role_pool` (or replaces it
+// with a no-op) the two RLS isolation tests above will silently
+// start passing under the bootstrap superuser, masking the bypass
+// they were written to detect. This test asserts the role swap
+// actually took effect, so the regression fails loudly here instead
+// of silently weakening RLS coverage.
+#[sqlx::test(migrations = "../../migrations")]
+async fn app_role_pool_runs_as_kubinate_app(pool: PgPool) {
+    let app_pool = db::app_role_pool(&pool).await.expect("app-role pool");
+
+    let current_user: String = sqlx::query_scalar("SELECT current_user::text")
+        .fetch_one(&app_pool)
+        .await
+        .expect("current_user query");
+    assert_eq!(
+        current_user, "kubinate_app",
+        "app-role pool must run as kubinate_app, got {current_user}",
+    );
+
+    // Sanity-check the original pool is still on the bootstrap user;
+    // otherwise the test isn't actually proving role separation.
+    let bootstrap_user: String = sqlx::query_scalar("SELECT current_user::text")
+        .fetch_one(&pool)
+        .await
+        .expect("current_user query");
+    assert_ne!(
+        bootstrap_user, "kubinate_app",
+        "bootstrap pool must not already be kubinate_app",
     );
 }
 
