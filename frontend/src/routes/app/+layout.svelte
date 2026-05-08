@@ -19,7 +19,7 @@
     SidebarTrigger
   } from '$lib/components/ui/sidebar';
   import { Badge } from '$lib/components/ui/badge';
-  import { CreditCard, LayoutGrid, LogOut, Puzzle, Shield, Users } from 'lucide-svelte';
+  import { CreditCard, KeyRound, LayoutGrid, LogOut, Puzzle, Shield, Users } from 'lucide-svelte';
   import type { MfaState } from '$lib/api/schemas';
 
   interface Props {
@@ -40,7 +40,8 @@
   const navSettings = [
     { label: 'Team', href: '/app/settings/team', icon: Users },
     { label: 'Billing', href: '/app/settings/billing', icon: CreditCard },
-    { label: 'Security', href: '/app/settings/security', icon: Shield }
+    { label: 'Security', href: '/app/settings/security', icon: Shield },
+    { label: 'Integrations', href: '/app/settings/integrations', icon: KeyRound }
   ];
 
   let userInitial = $derived(
