@@ -55,9 +55,7 @@ export async function getCluster(
   return parseResponse(response, clusterViewSchema);
 }
 
-export async function listClusters(
-  fetchImpl: typeof fetch = fetch
-): Promise<ClusterView[]> {
+export async function listClusters(fetchImpl: typeof fetch = fetch): Promise<ClusterView[]> {
   const response = await fetchImpl('/api/v1/clusters');
   return parseResponse(response, z.array(clusterViewSchema));
 }

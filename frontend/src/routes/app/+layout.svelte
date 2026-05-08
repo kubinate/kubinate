@@ -19,14 +19,7 @@
     SidebarTrigger
   } from '$lib/components/ui/sidebar';
   import { Badge } from '$lib/components/ui/badge';
-  import {
-    CreditCard,
-    LayoutGrid,
-    LogOut,
-    Puzzle,
-    Shield,
-    Users
-  } from 'lucide-svelte';
+  import { CreditCard, LayoutGrid, LogOut, Puzzle, Shield, Users } from 'lucide-svelte';
   import type { MfaState } from '$lib/api/schemas';
 
   interface Props {
@@ -55,9 +48,7 @@
   );
 
   let truncatedUserId = $derived(
-    data.session.userId.length > 24
-      ? data.session.userId.slice(0, 24) + '…'
-      : data.session.userId
+    data.session.userId.length > 24 ? data.session.userId.slice(0, 24) + '…' : data.session.userId
   );
 
   function isActive(href: string): boolean {

@@ -301,11 +301,7 @@
           Use your passkey to complete sign-in.
         </p>
         <div class="flex flex-wrap items-center gap-3">
-          <Button
-            onclick={assert}
-            disabled={assertInFlight}
-            data-testid="assert-button"
-          >
+          <Button onclick={assert} disabled={assertInFlight} data-testid="assert-button">
             {assertInFlight ? 'Verifying…' : 'Authenticate with passkey'}
           </Button>
           <button
@@ -318,7 +314,10 @@
           </button>
         </div>
         {#if assertError}
-          <div class="mt-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive" role="alert">
+          <div
+            class="mt-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+            role="alert"
+          >
             {assertError}
           </div>
         {/if}
@@ -337,7 +336,10 @@
   </CardHeader>
   <CardContent class="space-y-4">
     {#if loadError}
-      <div class="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive" role="alert">
+      <div
+        class="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+        role="alert"
+      >
         {loadError}
       </div>
     {:else if passkeys === null}
@@ -365,8 +367,11 @@
           {#each passkeys as p (p.id)}
             <TableRow data-testid={`passkey-row-${p.id}`}>
               <TableCell class="font-medium text-sm">{p.nickname}</TableCell>
-              <TableCell class="text-sm text-muted-foreground">{fmtDate(p.registered_at)}</TableCell>
-              <TableCell class="text-sm text-muted-foreground">{fmtLastUsed(p.last_used_at)}</TableCell>
+              <TableCell class="text-sm text-muted-foreground">{fmtDate(p.registered_at)}</TableCell
+              >
+              <TableCell class="text-sm text-muted-foreground"
+                >{fmtLastUsed(p.last_used_at)}</TableCell
+              >
               <TableCell>
                 <Button
                   variant="destructive"
@@ -385,7 +390,10 @@
     {/if}
 
     {#if revokeError}
-      <div class="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive" role="alert">
+      <div
+        class="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+        role="alert"
+      >
         {revokeError}
       </div>
     {/if}
@@ -419,7 +427,10 @@
     </Button>
 
     {#if recoveryError && !recoveryModalOpen}
-      <div class="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive" role="alert">
+      <div
+        class="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+        role="alert"
+      >
         {recoveryError}
       </div>
     {/if}
@@ -450,7 +461,10 @@
       </div>
 
       {#if registerError}
-        <div class="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive" role="alert">
+        <div
+          class="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          role="alert"
+        >
           {registerError}
         </div>
       {/if}
@@ -460,11 +474,7 @@
       <Button variant="outline" onclick={closeRegisterModal} disabled={registerInFlight}>
         Cancel
       </Button>
-      <Button
-        onclick={confirmRegister}
-        disabled={registerInFlight}
-        data-testid="register-confirm"
-      >
+      <Button onclick={confirmRegister} disabled={registerInFlight} data-testid="register-confirm">
         {registerInFlight ? 'Registering…' : 'Register'}
       </Button>
     </DialogFooter>
@@ -474,7 +484,9 @@
 <!-- Recovery codes display modal -->
 <Dialog
   open={recoveryModalOpen && recoveryCodes !== null}
-  onOpenChange={(open) => { if (!open) tryCloseRecoveryModal(); }}
+  onOpenChange={(open) => {
+    if (!open) tryCloseRecoveryModal();
+  }}
 >
   <DialogContent data-testid="recovery-modal">
     <DialogHeader>
@@ -486,13 +498,17 @@
 
     <div class="space-y-3 py-2">
       {#if recoveryCodes && recoveryCodes.length > 0}
-        <div class="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/40 p-3">
+        <div
+          class="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/40 p-3"
+        >
           <p class="text-xs font-medium text-amber-800 dark:text-amber-300 mb-2">
             These codes will not be shown again. Save them in your password manager now.
           </p>
           <div class="grid grid-cols-2 gap-1.5" data-testid="recovery-codes-list">
             {#each recoveryCodes as code (code)}
-              <code class="block rounded bg-white dark:bg-zinc-900 border border-amber-200 dark:border-amber-800 px-2 py-1 font-mono text-sm text-center">
+              <code
+                class="block rounded bg-white dark:bg-zinc-900 border border-amber-200 dark:border-amber-800 px-2 py-1 font-mono text-sm text-center"
+              >
                 {code}
               </code>
             {/each}
@@ -501,7 +517,10 @@
       {/if}
 
       {#if recoveryError}
-        <div class="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive" role="alert">
+        <div
+          class="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          role="alert"
+        >
           {recoveryError}
         </div>
       {/if}
@@ -541,16 +560,17 @@
       </div>
 
       {#if redeemError}
-        <div class="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive" role="alert">
+        <div
+          class="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          role="alert"
+        >
           {redeemError}
         </div>
       {/if}
     </div>
 
     <DialogFooter>
-      <Button variant="outline" onclick={closeRedeemModal} disabled={redeemInFlight}>
-        Cancel
-      </Button>
+      <Button variant="outline" onclick={closeRedeemModal} disabled={redeemInFlight}>Cancel</Button>
       <Button
         onclick={confirmRedeem}
         disabled={redeemInFlight}

@@ -11,7 +11,8 @@
 
   function badgeVariant(status: ClusterView['status']): 'default' | 'secondary' | undefined {
     if (status === 'ready') return 'default';
-    if (status === 'pending' || status === 'provisioning' || status === 'destroying') return 'secondary';
+    if (status === 'pending' || status === 'provisioning' || status === 'destroying')
+      return 'secondary';
     return undefined;
   }
 
@@ -65,7 +66,9 @@
     <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {#each clusters as cluster (cluster.id)}
         <a href="/app/clusters/{cluster.id}" class="group block outline-none">
-          <Card class="h-full transition-shadow group-hover:shadow-md group-focus-visible:ring-2 group-focus-visible:ring-ring">
+          <Card
+            class="h-full transition-shadow group-hover:shadow-md group-focus-visible:ring-2 group-focus-visible:ring-ring"
+          >
             <CardHeader class="gap-2">
               <div class="flex items-start justify-between gap-2">
                 <CardTitle class="font-semibold leading-snug">{cluster.name}</CardTitle>

@@ -19,7 +19,7 @@
     'cert-manager': {
       name: 'cert-manager',
       description:
-        'Automated TLS certificate management via Let\'s Encrypt and other ACME providers.',
+        "Automated TLS certificate management via Let's Encrypt and other ACME providers.",
       namespace: 'cert-manager',
       chartRepo: 'charts.jetstack.io'
     }

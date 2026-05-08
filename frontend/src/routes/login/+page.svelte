@@ -57,7 +57,9 @@
         By signing in, you agree to our
         <a href="/terms" class="underline underline-offset-2 hover:text-foreground">Terms</a>
         and
-        <a href="/privacy" class="underline underline-offset-2 hover:text-foreground">Privacy Policy</a>.
+        <a href="/privacy" class="underline underline-offset-2 hover:text-foreground"
+          >Privacy Policy</a
+        >.
       </p>
     </div>
   </div>

@@ -81,7 +81,10 @@
 <h1 class="text-2xl font-semibold mb-6">Billing</h1>
 
 {#if loadError}
-  <div class="mb-6 rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive" role="alert">
+  <div
+    class="mb-6 rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+    role="alert"
+  >
     {loadError}
   </div>
 {:else if !billing}
@@ -106,13 +109,20 @@
   </div>
 {:else}
   {#if emptyStateMessage}
-    <div class="mb-6 rounded-md border border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/40 px-4 py-3 text-sm text-blue-800 dark:text-blue-300" role="status" data-testid="checkout-pending">
+    <div
+      class="mb-6 rounded-md border border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/40 px-4 py-3 text-sm text-blue-800 dark:text-blue-300"
+      role="status"
+      data-testid="checkout-pending"
+    >
       {emptyStateMessage}
     </div>
   {/if}
 
   {#if !isOwner}
-    <div class="mb-6 rounded-md border border-muted bg-muted/40 px-4 py-3 text-sm text-muted-foreground" data-testid="non-owner-notice">
+    <div
+      class="mb-6 rounded-md border border-muted bg-muted/40 px-4 py-3 text-sm text-muted-foreground"
+      data-testid="non-owner-notice"
+    >
       Only owners can change billing. Ask an owner to upgrade.
     </div>
   {/if}
@@ -249,12 +259,17 @@
   </div>
 
   {#if actionError}
-    <div class="mt-4 rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive" role="alert">
+    <div
+      class="mt-4 rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+      role="alert"
+    >
       {actionError}
     </div>
   {/if}
 
   <!-- Hidden test id for current-plan -->
   <span class="sr-only" data-testid="current-plan">{planLabel(billing.plan)}</span>
-  <span class="sr-only" data-testid="customer-id">{billing.stripe_customer_id ?? 'not linked yet'}</span>
+  <span class="sr-only" data-testid="customer-id"
+    >{billing.stripe_customer_id ?? 'not linked yet'}</span
+  >
 {/if}
