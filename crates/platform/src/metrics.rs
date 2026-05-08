@@ -13,7 +13,7 @@
 //! metrics handle is process-global by construction.
 //!
 //! Metric naming conventions (Prometheus):
-//! - Names are snake_case with the `kubinate_` prefix.
+//! - Names are `snake_case` with the `kubinate_` prefix.
 //! - Gauges describing in-flight work end in `_inflight`.
 //! - Counters describing event totals end in `_total`.
 //!

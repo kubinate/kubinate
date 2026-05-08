@@ -48,14 +48,14 @@ pub enum SecretError {
     /// Decryption failed — usually a KEK mismatch or tampered ciphertext.
     #[error("decryption failed")]
     Decrypt,
-    /// The configured KEK / AppRole token failed validation at
+    /// The configured KEK / `AppRole` token failed validation at
     /// construction time. Operator action: check the env var.
     #[error("invalid KEK: {0}")]
     InvalidKek(String),
     /// The remote secret backend rejected our credential. Distinct
     /// from [`Self::InvalidKek`] so on-call can tell "rotate the
-    /// AppRole secret-id" (this) apart from "fix the env var"
-    /// (InvalidKek). Vault 401 (token expired/revoked), 403 (policy
+    /// `AppRole` secret-id" (this) apart from "fix the env var"
+    /// (`InvalidKek`). Vault 401 (token expired/revoked), 403 (policy
     /// denial), and 404 on encrypt/decrypt (key not found) all map
     /// here. The string is the HTTP status only — bodies are
     /// scrubbed before they reach this variant to keep tracing logs
@@ -334,7 +334,7 @@ pub trait VaultTransit: Send + Sync {
 /// re-read of a `secrets` row produces the same plaintext, which
 /// requires that the ciphertext written under a particular `put`
 /// resolves stably under a later `get`. A random-per-encrypt
-/// fake would still satisfy the contract via the HashMap, but
+/// fake would still satisfy the contract via the `HashMap`, but
 /// debugging a failing parity test is easier when the ciphertext
 /// looks like the row id.
 pub struct InMemoryVaultTransit {
@@ -546,7 +546,7 @@ impl<T: VaultTransit> SecretStore for VaultStore<T> {
     }
 }
 
-/// Production [`VaultTransit`] talking to a real HashiCorp Vault
+/// Production [`VaultTransit`] talking to a real `HashiCorp` Vault
 /// instance via its HTTP API.
 ///
 /// Three endpoints, all under `/v1/transit/`:
@@ -648,10 +648,10 @@ struct VaultDecryptData {
 /// before they reach error variants to keep tracing logs from
 /// echoing key paths or response fragments) to a `SecretError`.
 ///
-/// - 401 / 403 → `AuthFailed` (rotate the AppRole secret-id; check
+/// - 401 / 403 → `AuthFailed` (rotate the `AppRole` secret-id; check
 ///   the policy).
 /// - 404 → `AuthFailed` ("key not found" — usually means the
-///   AppRole's policy doesn't grant create on the key path, or the
+///   `AppRole`'s policy doesn't grant create on the key path, or the
 ///   key was deleted out-of-band).
 /// - 400 with the upstream "could not be decrypted" sentinel →
 ///   `Decrypt` (handled by the caller, which already has the body

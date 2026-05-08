@@ -20,7 +20,11 @@ use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 use uuid::Uuid;
 
-use crate::{actor::Actor, problem::ApiError, AppState};
+use crate::{
+    actor::{Actor, OwnerActor},
+    problem::ApiError,
+    AppState,
+};
 
 /// Mount under `/v1/billing`.
 pub fn routes() -> Router<AppState> {
@@ -76,29 +80,10 @@ struct CheckoutResponse {
 
 async fn start_checkout(
     State(state): State<AppState>,
-    actor: Actor,
+    owner: OwnerActor,
     Json(req): Json<CheckoutRequest>,
 ) -> Result<Json<CheckoutResponse>, ApiError> {
-    // Owner-only gate. The membership service knows roles per org;
-    // borrowing a single look-up beats opening another endpoint.
-    let role = state
-        .membership_service
-        .list_members(actor.organization_id, actor.user_id)
-        .await
-        .map_err(billing_invite_to_api)?
-        .into_iter()
-        .find(|m| m.user_id == actor.user_id)
-        .map(|m| m.role)
-        .ok_or_else(|| {
-            ApiError::from(PlatformError::Forbidden(
-                "actor has no membership in active organization".into(),
-            ))
-        })?;
-    if !matches!(role, kubinate_identity::model::MembershipRole::Owner) {
-        return Err(ApiError::from(PlatformError::Forbidden(
-            "only owners can start a billing checkout".into(),
-        )));
-    }
+    let actor = owner.inner;
 
     // We need the actor's email for the new-customer Checkout path.
     let email = sqlx::query_scalar::<_, String>("SELECT email::text FROM users WHERE id = $1")
@@ -133,7 +118,7 @@ async fn webhook(
 
     let now = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
+        .map(|d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX))
         .unwrap_or(0);
 
     if let Err(err) = verify_signature(
@@ -182,9 +167,5 @@ async fn webhook(
 }
 
 fn billing_to_api(err: BillingError) -> ApiError {
-    ApiError::from(PlatformError::from(err))
-}
-
-fn billing_invite_to_api(err: kubinate_identity::service::InviteError) -> ApiError {
     ApiError::from(PlatformError::from(err))
 }

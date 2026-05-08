@@ -147,10 +147,11 @@ struct CatalogResponse<'a> {
 
 async fn create(
     State(state): State<AppState>,
-    actor: Actor,
+    owner: OwnerActor,
     headers: HeaderMap,
     body: String,
 ) -> Result<impl IntoResponse, ApiError> {
+    let actor = owner.inner;
     let req: CreateRequest = serde_json::from_str(&body)
         .map_err(|e| ApiError::from(PlatformError::Invalid(format!("invalid JSON body: {e}"))))?;
 
@@ -168,7 +169,8 @@ async fn create(
             lookup_idempotency(&state, actor.organization_id, key, &body_hash).await?
         {
             return Ok((
-                StatusCode::from_u16(cached.response_status as u16).unwrap_or(StatusCode::OK),
+                StatusCode::from_u16(u16::try_from(cached.response_status).unwrap_or(200))
+                    .unwrap_or(StatusCode::OK),
                 Json(cached.response_body),
             )
                 .into_response());
@@ -211,7 +213,7 @@ async fn create(
             cluster_name: cluster.name.clone(),
             location: cluster.region.clone(),
             server_type: cluster.server_type.clone(),
-            worker_count: cluster.worker_count.max(0) as usize,
+            worker_count: usize::try_from(cluster.worker_count.max(0)).unwrap_or(0),
             ssh_key: state.cluster_settings.ssh_key.clone(),
             user_data: state.cluster_settings.user_data.clone(),
             k3s_version: state.cluster_settings.k3s_version.clone(),
@@ -293,7 +295,7 @@ async fn list(
 /// 1. **MFA gate.** A partial-MFA session (`mfa_satisfied = false`)
 ///    is rejected with HTTP 401 and Problem Details
 ///    `code = mfa_required`; the SPA's `_problem.ts` discriminator
-///    catches it and routes to the WebAuthn challenge page.
+///    catches it and routes to the `WebAuthn` challenge page.
 /// 2. **Role gate.** A live membership in the active organization
 ///    must be Owner or Admin. Member / Developer / Viewer roles get
 ///    HTTP 403.
@@ -329,7 +331,7 @@ async fn destroy(
 /// as a downloadable attachment. Tier-1 sensitive (kubeconfig grants
 /// cluster-admin), so:
 ///
-/// 1. The handler is rate-limited at 5 requests/min/user (ticket 04 DoD).
+/// 1. The handler is rate-limited at 5 requests/min/user (ticket 04 `DoD`).
 /// 2. Every successful retrieval appends a `kubeconfig.retrieved`
 ///    audit row via `audit_log_append_explicit` — without this the
 ///    audit chain has no record of reads, since SELECT does not fire
@@ -399,10 +401,10 @@ async fn record_kubeconfig_audit(
             .and_then(|v| v.to_str().ok())
             .map(str::to_owned),
     };
-    ctx.apply(&mut *tx).await?;
+    ctx.apply(&mut tx).await?;
 
     audit::append_explicit(
-        &mut *tx,
+        &mut tx,
         actor.organization_id,
         "kubeconfig.retrieved",
         "cluster",
@@ -637,11 +639,12 @@ impl From<kubinate_addons::model::ClusterAddon> for AddonView {
 /// Idempotent on `(cluster, addon)` per ticket 07 AC #3.
 async fn install_addon(
     State(state): State<AppState>,
-    actor: Actor,
+    owner: OwnerActor,
     headers: HeaderMap,
     Path(cluster_id): Path<Uuid>,
     Json(req): Json<InstallAddonRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
+    let actor = owner.inner;
     // Cluster must be Ready before we attempt an install — Helm will
     // hang otherwise.
     let cluster = state
@@ -722,11 +725,12 @@ const MAX_WORKER_COUNT: i16 = 10;
 /// dispatched, or 200 with the current view when `delta` is zero.
 async fn scale_workers(
     State(state): State<AppState>,
-    actor: Actor,
+    owner: OwnerActor,
     headers: HeaderMap,
     Path(cluster_id): Path<Uuid>,
     Json(req): Json<ScaleWorkersRequest>,
 ) -> Result<Response, ApiError> {
+    let actor = owner.inner;
     let cluster = state
         .cluster_service
         .get(actor.organization_id, cluster_id)

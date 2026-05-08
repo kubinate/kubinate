@@ -44,7 +44,7 @@ impl RateLimiter {
         let mut state = self.state.lock().expect("rate-limiter mutex");
         let entry = state.entry(key).or_default();
         let cutoff = now.checked_sub(self.window).unwrap_or(now);
-        while entry.front().map_or(false, |t| *t < cutoff) {
+        while entry.front().is_some_and(|t| *t < cutoff) {
             entry.pop_front();
         }
         if entry.len() >= self.max_per_window {
