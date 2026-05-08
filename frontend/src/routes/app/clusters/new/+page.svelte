@@ -9,6 +9,11 @@
     FALLBACK_SERVER_TYPES,
     type CredentialView
   } from '$lib/api/schemas';
+  import { Card, CardContent } from '$lib/components/ui/card';
+  import { Label } from '$lib/components/ui/label';
+  import { Input } from '$lib/components/ui/input';
+  import { Button } from '$lib/components/ui/button';
+  import { Server, Package, Key } from 'lucide-svelte';
 
   // Form state. We let the user edit freely and validate on submit —
   // inline validation can come later if users ask for it.
@@ -97,129 +102,167 @@
   <title>New cluster — Kubinate</title>
 </svelte:head>
 
-<h1>Create a cluster</h1>
-<p class="hint">
-  Sprint 1 ships single-node control planes and 1–10 workers. High-availability control planes
-  arrive in Phase 2.
-</p>
+<h1 class="text-2xl font-semibold mb-1">New cluster</h1>
+<p class="text-muted-foreground text-sm mb-8">Provision a k3s cluster on your Hetzner account.</p>
 
-<form onsubmit={onSubmit} novalidate>
-  <label>
-    Name
-    <input type="text" bind:value={name} autocomplete="off" required />
-    {#if fieldErrors.name}<small class="error">{fieldErrors.name}</small>{/if}
-  </label>
+<div class="lg:grid lg:grid-cols-5 lg:gap-12">
+  <!-- Form column -->
+  <div class="lg:col-span-3">
+    <Card>
+      <CardContent class="pt-6">
+        <form onsubmit={onSubmit} novalidate>
+          <div class="space-y-5">
+            <!-- Name -->
+            <div class="space-y-1.5">
+              <Label for="cluster-name">Name</Label>
+              <Input
+                id="cluster-name"
+                type="text"
+                bind:value={name}
+                autocomplete="off"
+                required
+                placeholder="my-cluster"
+              />
+              {#if fieldErrors.name}
+                <p class="text-sm text-destructive">{fieldErrors.name}</p>
+              {/if}
+            </div>
 
-  <label>
-    Region
-    <select bind:value={region}>
-      {#each regions as r (r)}
-        <option value={r}>{r}</option>
-      {/each}
-    </select>
-    {#if fieldErrors.region}<small class="error">{fieldErrors.region}</small>{/if}
-  </label>
+            <!-- Region -->
+            <div class="space-y-1.5">
+              <Label for="cluster-region">Region</Label>
+              <select
+                id="cluster-region"
+                bind:value={region}
+                class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              >
+                {#each regions as r (r)}
+                  <option value={r}>{r}</option>
+                {/each}
+              </select>
+              {#if fieldErrors.region}
+                <p class="text-sm text-destructive">{fieldErrors.region}</p>
+              {/if}
+            </div>
 
-  <label>
-    Server type
-    <select bind:value={serverType}>
-      {#each serverTypes as t (t)}
-        <option value={t}>{t}</option>
-      {/each}
-    </select>
-    {#if fieldErrors.server_type}
-      <small class="error">{fieldErrors.server_type}</small>
-    {/if}
-  </label>
+            <!-- Server type -->
+            <div class="space-y-1.5">
+              <Label for="cluster-server-type">Server type</Label>
+              <select
+                id="cluster-server-type"
+                bind:value={serverType}
+                class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              >
+                {#each serverTypes as t (t)}
+                  <option value={t}>{t}</option>
+                {/each}
+              </select>
+              {#if fieldErrors.server_type}
+                <p class="text-sm text-destructive">{fieldErrors.server_type}</p>
+              {/if}
+            </div>
 
-  <label>
-    Worker count
-    <input type="number" min="1" max="10" bind:value={workerCount} required />
-    {#if fieldErrors.worker_count}
-      <small class="error">{fieldErrors.worker_count}</small>
-    {/if}
-  </label>
+            <!-- Worker count -->
+            <div class="space-y-1.5">
+              <Label for="cluster-worker-count">Worker count</Label>
+              <select
+                id="cluster-worker-count"
+                bind:value={workerCount}
+                class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              >
+                {#each [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as n (n)}
+                  <option value={n}>{n}</option>
+                {/each}
+              </select>
+              {#if fieldErrors.worker_count}
+                <p class="text-sm text-destructive">{fieldErrors.worker_count}</p>
+              {/if}
+            </div>
 
-  <label>
-    Hetzner credential
-    {#if credentials === null}
-      <p class="muted">Loading credentials…</p>
-    {:else if credentials.length === 0}
-      <p class="muted" data-testid="no-credentials">
-        You don't have any Hetzner tokens yet —
-        <a href="/app/settings/integrations">add one</a> to provision a cluster.
-      </p>
-    {:else}
-      <select bind:value={credentialId} data-testid="credential-picker" required>
-        {#each credentials as c (c.id)}
-          <option value={c.id}>{c.alias}</option>
-        {/each}
-      </select>
-    {/if}
-    {#if fieldErrors.credential_id}
-      <small class="error">{fieldErrors.credential_id}</small>
-    {/if}
-  </label>
+            <!-- Hetzner credential -->
+            <div class="space-y-1.5">
+              <Label for="cluster-credential">Hetzner credential</Label>
+              {#if credentials === null}
+                <p class="text-sm text-muted-foreground">Loading credentials…</p>
+              {:else if credentials.length === 0}
+                <div class="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                  No Hetzner tokens yet — <a
+                    href="/app/settings/integrations"
+                    class="underline underline-offset-2 font-medium hover:text-amber-900"
+                    >add one</a
+                  > to provision a cluster.
+                </div>
+              {:else}
+                <select
+                  id="cluster-credential"
+                  bind:value={credentialId}
+                  data-testid="credential-picker"
+                  required
+                  class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                >
+                  {#each credentials as c (c.id)}
+                    <option value={c.id}>{c.alias}</option>
+                  {/each}
+                </select>
+              {/if}
+              {#if fieldErrors.credential_id}
+                <p class="text-sm text-destructive">{fieldErrors.credential_id}</p>
+              {/if}
+            </div>
 
-  {#if submitError}
-    <p class="error" role="alert">{submitError}</p>
-  {/if}
+            <!-- Submit error -->
+            {#if submitError}
+              <div role="alert" class="rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
+                {submitError}
+              </div>
+            {/if}
 
-  <button type="submit" disabled={submitting || credentials === null || credentials.length === 0}>
-    {submitting ? 'Creating…' : 'Create cluster'}
-  </button>
-</form>
+            <!-- Submit -->
+            <Button
+              type="submit"
+              class="w-full"
+              disabled={submitting || credentials === null || credentials.length === 0}
+            >
+              {submitting ? 'Creating cluster…' : 'Create cluster'}
+            </Button>
+          </div>
+        </form>
+      </CardContent>
+    </Card>
+  </div>
 
-<style>
-  h1 {
-    font-size: 1.8rem;
-    margin-bottom: 0.25rem;
-  }
-  .hint {
-    color: #555;
-    margin-bottom: 1.5rem;
-  }
-  form {
-    display: grid;
-    gap: 1rem;
-    max-width: 440px;
-  }
-  label {
-    display: grid;
-    gap: 0.25rem;
-    font-weight: 600;
-  }
-  input,
-  select {
-    padding: 0.5rem;
-    font: inherit;
-    border: 1px solid #bbb;
-    border-radius: 4px;
-    font-weight: 400;
-  }
-  .error {
-    color: #b00020;
-    font-weight: 400;
-  }
-  .muted {
-    color: #555;
-    font-weight: 400;
-    margin: 0;
-  }
-  .muted a {
-    color: #1a7f37;
-  }
-  button {
-    padding: 0.6rem 1.2rem;
-    background: #222;
-    color: #fff;
-    border: 0;
-    border-radius: 4px;
-    font-weight: 600;
-    cursor: pointer;
-  }
-  button[disabled] {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-</style>
+  <!-- Info panel -->
+  <div class="hidden lg:block lg:col-span-2">
+    <Card>
+      <CardContent class="pt-6">
+        <p class="text-sm font-medium text-foreground mb-4">What happens next</p>
+        <ul class="space-y-4">
+          <li class="flex items-start gap-3">
+            <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted">
+              <Server class="h-4 w-4 text-muted-foreground" />
+            </div>
+            <p class="text-sm text-muted-foreground leading-relaxed">
+              Hetzner servers provisioned in your selected region
+            </p>
+          </li>
+          <li class="flex items-start gap-3">
+            <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted">
+              <Package class="h-4 w-4 text-muted-foreground" />
+            </div>
+            <p class="text-sm text-muted-foreground leading-relaxed">
+              k3s installed and configured automatically
+            </p>
+          </li>
+          <li class="flex items-start gap-3">
+            <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted">
+              <Key class="h-4 w-4 text-muted-foreground" />
+            </div>
+            <p class="text-sm text-muted-foreground leading-relaxed">
+              Kubeconfig ready to download when the cluster is Ready
+            </p>
+          </li>
+        </ul>
+      </CardContent>
+    </Card>
+  </div>
+</div>

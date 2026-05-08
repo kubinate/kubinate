@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import {
   catalogSchema,
   clusterViewSchema,
@@ -6,6 +7,8 @@ import {
   type CreateClusterInput
 } from './schemas';
 import { ApiError, parseProblem } from './_problem';
+
+export { clusterViewSchema };
 
 // Re-export so existing call sites that import from `./clusters`
 // keep working unchanged. Sprint 4 ticket 05 moved the canonical
@@ -50,6 +53,13 @@ export async function getCluster(
 ): Promise<ClusterView> {
   const response = await fetchImpl(`/api/v1/clusters/${id}`);
   return parseResponse(response, clusterViewSchema);
+}
+
+export async function listClusters(
+  fetchImpl: typeof fetch = fetch
+): Promise<ClusterView[]> {
+  const response = await fetchImpl('/api/v1/clusters');
+  return parseResponse(response, z.array(clusterViewSchema));
 }
 
 export async function loadClusterCatalog(
