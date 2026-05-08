@@ -109,7 +109,7 @@ Ordered by preference.
    15 s (`KeepAlive::new().interval(15s)`). Dropping to 5 s makes
    intermediaries reap idle sockets more aggressively at the cost
    of a small bandwidth bump. Set
-   `KUBINATE_SSE_KEEPALIVE_SECS=5` and bounce the API. **Revert
+   `KUBINATE__SSE_KEEPALIVE_SECS=5` and bounce the API. **Revert
    after the underlying fix lands** — this is a pressure valve,
    not a fix.
 

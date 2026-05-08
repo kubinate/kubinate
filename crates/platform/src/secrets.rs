@@ -9,7 +9,7 @@
 //! - Plaintext exists in Rust memory only inside a single method call,
 //!   and only wrapped in a [`SecretString`] whose `Debug` impl redacts
 //!   the contents.
-//! - The KEK is loaded once at startup from `KUBINATE_KEK` and is held
+//! - The KEK is loaded once at startup from `KUBINATE__KEK` and is held
 //!   in a [`SecretString`] for the lifetime of the [`PgcryptoStore`];
 //!   it is never serialized or logged.
 //! - Every insert/read/delete opens a tenant-scoped transaction that
@@ -120,14 +120,14 @@ impl PgcryptoStore {
         Ok(Self { pool, kek })
     }
 
-    /// Build a store using the KEK loaded from `KUBINATE_KEK`.
+    /// Build a store using the KEK loaded from `KUBINATE__KEK`.
     ///
     /// # Errors
     /// Returns [`SecretError::InvalidKek`] if the env var is unset or
     /// fails the validation rules documented on [`Self::new`].
     pub fn from_env(pool: PgPool) -> Result<Self, SecretError> {
-        let kek = std::env::var("KUBINATE_KEK")
-            .map_err(|_| SecretError::InvalidKek("KUBINATE_KEK not set".to_string()))?;
+        let kek = std::env::var("KUBINATE__KEK")
+            .map_err(|_| SecretError::InvalidKek("KUBINATE__KEK not set".to_string()))?;
         Self::new(pool, SecretString::from(kek))
     }
 }
@@ -263,7 +263,7 @@ fn decrypt_or_db(err: sqlx::Error) -> SecretError {
 //
 // The `VaultStore` is a drop-in replacement for `PgcryptoStore` behind
 // the `SecretStore` trait. The pgcrypto path stays compiled in; the
-// API binary picks one at startup via the `KUBINATE_SECRETS_BACKEND`
+// API binary picks one at startup via the `KUBINATE__SECRETS_BACKEND`
 // env var. Migration tooling that re-keys existing rows is out of
 // scope for this chunk — see `docs/backlog/sprint-4/02-vault-migration.md`
 // "Sprint 4 partial scope" for the full path.
@@ -296,7 +296,7 @@ pub const VAULT_ALGORITHM_TAG: &str = "vault_transit_v1";
 /// Per-org Vault key naming. `kubinate/<organization_id>` keeps
 /// transit keys isolated per tenant; a leaked key compromises one
 /// org, not the fleet. The `kubinate/` prefix matches the
-/// `KUBINATE_VAULT_KEY_PREFIX` env var the future
+/// `KUBINATE__VAULT_KEY_PREFIX` env var the future
 /// `HttpVaultTransit` reads (default `kubinate`).
 fn vault_key_name(prefix: &str, organization_id: Uuid) -> String {
     format!("{prefix}/{organization_id}")
@@ -428,7 +428,7 @@ pub struct VaultStore<T: VaultTransit> {
 impl<T: VaultTransit> VaultStore<T> {
     /// Build a [`VaultStore`] from a pool, a transit client, and
     /// the per-deploy key-name prefix. The prefix is intended to
-    /// be loaded from `KUBINATE_VAULT_KEY_PREFIX` (default
+    /// be loaded from `KUBINATE__VAULT_KEY_PREFIX` (default
     /// `kubinate`) — wiring lives at the API edge, not here.
     #[must_use]
     pub fn new(pool: PgPool, transit: T, key_prefix: impl Into<String>) -> Self {
@@ -579,7 +579,7 @@ impl HttpVaultTransit {
     /// the reqwest client cannot be built.
     pub fn new(base_url: &str, token: SecretString) -> Result<Self, SecretError> {
         let parsed = url::Url::parse(base_url).map_err(|e| {
-            SecretError::InvalidKek(format!("KUBINATE_VAULT_ADDR invalid url: {e}"))
+            SecretError::InvalidKek(format!("KUBINATE__VAULT_ADDR invalid url: {e}"))
         })?;
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(15))
@@ -592,17 +592,17 @@ impl HttpVaultTransit {
         })
     }
 
-    /// Build from `KUBINATE_VAULT_ADDR` + `KUBINATE_VAULT_TOKEN`.
+    /// Build from `KUBINATE__VAULT_ADDR` + `KUBINATE__VAULT_TOKEN`.
     /// Both env vars are required.
     ///
     /// # Errors
     /// [`SecretError::InvalidKek`] when either var is missing or
     /// malformed.
     pub fn from_env() -> Result<Self, SecretError> {
-        let addr = std::env::var("KUBINATE_VAULT_ADDR")
-            .map_err(|_| SecretError::InvalidKek("KUBINATE_VAULT_ADDR not set".into()))?;
-        let token = std::env::var("KUBINATE_VAULT_TOKEN")
-            .map_err(|_| SecretError::InvalidKek("KUBINATE_VAULT_TOKEN not set".into()))?;
+        let addr = std::env::var("KUBINATE__VAULT_ADDR")
+            .map_err(|_| SecretError::InvalidKek("KUBINATE__VAULT_ADDR not set".into()))?;
+        let token = std::env::var("KUBINATE__VAULT_TOKEN")
+            .map_err(|_| SecretError::InvalidKek("KUBINATE__VAULT_TOKEN not set".into()))?;
         Self::new(&addr, SecretString::from(token))
     }
 

@@ -17,7 +17,7 @@ under-fills at ~22 to absorb phase-boundary surprises.
 | File | Status | Pts | What ships |
 |---|---|---|---|
 | [05-webauthn-for-owners.md](./05-webauthn-for-owners.md) | full ship | 8 | `webauthn-rs` integration, `/app/settings/security` page, `requires_mfa` enforcement on Owner / Admin routes, recovery-codes runbook. **Headline user-visible feature.** |
-| [02-vault-migration.md](./02-vault-migration.md) | partial (~6 of 13) | 6 | `VaultStore` impl with parity tests; Ansible role for the dogfood deploy; `KUBINATE_SECRETS_BACKEND` env-var. **No** migration binary, no production cutover. |
+| [02-vault-migration.md](./02-vault-migration.md) | partial (~6 of 13) | 6 | `VaultStore` impl with parity tests; Ansible role for the dogfood deploy; `KUBINATE__SECRETS_BACKEND` env-var. **No** migration binary, no production cutover. |
 | [03-agent-reverse-tunnel.md](./03-agent-reverse-tunnel.md) | partial (~5 of 13) | 5 | New crate `crates/agent-proto/`; control-plane `/v1/agents/connect` endpoint accepting the bidirectional gRPC stream; in-process loopback test. **No** mTLS handshake, no real PKI, no agent-binary deploy. |
 | [06-dogfood-migration-spike.md](./06-dogfood-migration-spike.md) | full ship | 3 | `docs/decisions/sprint-4-dogfood-migration.md` with M1–M4 questions, recommendation skeleton, revisit triggers. Pre-shapes Sprint 5 work. |
 | [04-observability-proxy-production.md](./04-observability-proxy-production.md) | **deferred to Sprint 5+** | 0 | Hard-blocked on M1–M4 needing real VM on dogfood. The in-process `InMemoryMetricsStore` from Sprint 3 ticket 07 stays the production backend. |

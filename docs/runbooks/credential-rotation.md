@@ -55,7 +55,7 @@ revocation.
 ```bash
 # Replace placeholders. organization_id is in the support ticket; if
 # unknown, search by customer email:
-psql "$KUBINATE_DATABASE_URL" -c "
+psql "$KUBINATE__DATABASE_URL" -c "
   SELECT m.organization_id
   FROM memberships m
   JOIN users u ON u.id = m.user_id
@@ -66,13 +66,13 @@ psql "$KUBINATE_DATABASE_URL" -c "
 # List that tenant's live credentials and any recent uses. The audit
 # rows here come from the trigger added in Sprint 1 ticket 09 and the
 # kubeconfig retrievals from ticket 04 (`audit_log_append_explicit`).
-psql "$KUBINATE_DATABASE_URL" -c "
+psql "$KUBINATE__DATABASE_URL" -c "
   SELECT id, alias, created_at, updated_at
   FROM hetzner_credentials
   WHERE organization_id = '<org_uuid>' AND deleted_at IS NULL;
 "
 
-psql "$KUBINATE_DATABASE_URL" -c "
+psql "$KUBINATE__DATABASE_URL" -c "
   SELECT created_at, action, resource_id, actor_user_id, request_id, ip_address
   FROM audit_log_entries
   WHERE organization_id = '<org_uuid>'
@@ -170,7 +170,7 @@ If usage signal suggests active abuse:
 
 ```bash
 # Recent provisioning workflows under that org — anything we didn't expect?
-psql "$KUBINATE_DATABASE_URL" -c "
+psql "$KUBINATE__DATABASE_URL" -c "
   SELECT id, cluster_id, current_step, started_at, error_reason
   FROM provisioning_workflows
   WHERE organization_id = '<org_uuid>'
@@ -180,7 +180,7 @@ psql "$KUBINATE_DATABASE_URL" -c "
 
 # Audit hash-chain integrity — if the chain breaks for this tenant,
 # treat as forensic-evidence-only and engage security lead.
-psql "$KUBINATE_DATABASE_URL" -c "
+psql "$KUBINATE__DATABASE_URL" -c "
   SELECT * FROM audit_log_verify('<org_uuid>');
 "
 ```

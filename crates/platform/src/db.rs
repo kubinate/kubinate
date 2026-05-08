@@ -25,7 +25,7 @@ pub async fn pool(dsn: &str, max_connections: u32) -> Result<PgPool, sqlx::Error
 /// `current_user` (which the RLS policy and `app_current_tenant_id()`
 /// resolve against) to the non-superuser application role without
 /// needing a second DSN. Production paths configure
-/// `KUBINATE_DATABASE_URL` to log in directly as `kubinate_app`, so
+/// `KUBINATE__DATABASE_URL` to log in directly as `kubinate_app`, so
 /// this helper is test-only scaffolding — not a runtime code path.
 ///
 /// # Errors

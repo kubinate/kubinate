@@ -37,7 +37,7 @@ are in `CrashLoopBackOff` and never become Ready before the workflow's
 
 ```bash
 # 1. Find the affected addon row.
-psql "$KUBINATE_DATABASE_URL" -c "
+psql "$KUBINATE__DATABASE_URL" -c "
   SELECT id, cluster_id, addon, version, status, status_reason,
          created_at, updated_at
   FROM cluster_addons

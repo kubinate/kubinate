@@ -115,7 +115,7 @@ loopback test) is the ratification of this decision at the wire
 level. The ratification is **conditional** on the Sprint 5+
 follow-ups (real CA, Vault PKI flow, agent binary deploy) landing
 before the listener flips on outside of the in-process loopback;
-`KUBINATE_AGENT_TUNNEL_ENABLED` defaults off and the production
+`KUBINATE__AGENT_TUNNEL_ENABLED` defaults off and the production
 deploy story names mTLS enforcement as the gating signal.
 
 ## Alternatives considered
@@ -176,7 +176,7 @@ for a comparable WebSocket-only stack); the trade-off is bought
 back by not maintaining a custom framing layer.
 
 **We accept** that the listener has to live on a separate gRPC
-port (`KUBINATE_AGENT_TUNNEL_ADDR`, default `127.0.0.1:8081`)
+port (`KUBINATE__AGENT_TUNNEL_ADDR`, default `127.0.0.1:8081`)
 during the Sprint 4 partial-scope window. axum 0.8 + tonic 0.12
 interop on a single port is doable but adds churn that buys
 nothing while the service is gated off; the production address

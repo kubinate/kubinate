@@ -56,7 +56,7 @@ that will tell a future operator whether the gate is open.
       `/healthz` answers from a pod, not a VPS.
 - [ ] **Vault replaces pgcrypto for tenant secrets.** ADR-0007
       §Long term records the new mechanism + the data-migration
-      runbook. The `KUBINATE_KEK` env var is removed.
+      runbook. The `KUBINATE__KEK` env var is removed.
 - [ ] **CloudNativePG operator manages the control-plane Postgres.**
       The single-VPS Postgres container is gone; backups + PITR are
       operator-managed.

@@ -6,11 +6,11 @@
 # `kubinate_app` role with NOSUPERUSER NOBYPASSRLS so the runtime
 # API connection actually triggers row-level security.
 #
-# The role's password is taken from `KUBINATE_APP_DB_PASSWORD` (env)
+# The role's password is taken from `kubinate_app_DB_PASSWORD` (env)
 # with a hard-coded fallback for `docker compose up` ergonomics —
 # the fallback is identical to the bootstrap password, which is
 # already a dev-only value committed in `docker-compose.yml`.
-# Production deploys set `KUBINATE_APP_DB_PASSWORD` to a real
+# Production deploys set `kubinate_app_DB_PASSWORD` to a real
 # secret via Ansible Vault (Phase 2) or HashiCorp Vault dynamic
 # credentials (Phase 3+, see ADR-0007).
 #
@@ -20,7 +20,7 @@
 
 set -euo pipefail
 
-APP_PASSWORD="${KUBINATE_APP_DB_PASSWORD:-kubinate}"
+APP_PASSWORD="${kubinate_app_DB_PASSWORD:-kubinate}"
 
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
   DO \$\$

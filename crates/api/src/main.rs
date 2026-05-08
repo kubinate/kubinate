@@ -140,11 +140,11 @@ async fn main() -> anyhow::Result<()> {
     // applies (Postgres superusers bypass RLS even with `FORCE ROW
     // LEVEL SECURITY`).
     //
-    // Backwards-compatible default: when `KUBINATE_DATABASE_MIGRATION_URL`
+    // Backwards-compatible default: when `KUBINATE__DATABASE_MIGRATION_URL`
     // is unset, fall back to the runtime URL — that's the dev /
     // legacy shape where the same role does both. Production +
     // CI set the var explicitly.
-    let migration_url = std::env::var("KUBINATE_DATABASE_MIGRATION_URL")
+    let migration_url = std::env::var("KUBINATE__DATABASE_MIGRATION_URL")
         .unwrap_or_else(|_| config.database_url.clone());
     {
         let migration_pool = db::pool(&migration_url, 4)
@@ -162,13 +162,13 @@ async fn main() -> anyhow::Result<()> {
 
     // Sprint 4 ticket 02 — backend switch. Default `pgcrypto` keeps
     // every existing deploy unchanged. `vault` requires the
-    // KUBINATE_VAULT_ADDR + KUBINATE_VAULT_TOKEN pair and routes
+    // KUBINATE__VAULT_ADDR + KUBINATE__VAULT_TOKEN pair and routes
     // every put/get/delete through Vault's transit engine. The
     // `wrong-backend` failure shape is loud (`Decrypt`) per the
     // parity tests — flipping mid-flight on a populated DB is not a
     // supported operation; the migration binary (Sprint 5+) does
     // the re-key.
-    let secret_store: Arc<dyn SecretStore> = match std::env::var("KUBINATE_SECRETS_BACKEND")
+    let secret_store: Arc<dyn SecretStore> = match std::env::var("KUBINATE__SECRETS_BACKEND")
         .as_deref()
         .unwrap_or("pgcrypto")
     {
@@ -177,9 +177,9 @@ async fn main() -> anyhow::Result<()> {
         }
         "vault" => {
             let transit = kubinate_platform::secrets::HttpVaultTransit::from_env().context(
-                "secret store init (vault) — KUBINATE_VAULT_ADDR + KUBINATE_VAULT_TOKEN required",
+                "secret store init (vault) — KUBINATE__VAULT_ADDR + KUBINATE__VAULT_TOKEN required",
             )?;
-            let key_prefix = std::env::var("KUBINATE_VAULT_KEY_PREFIX")
+            let key_prefix = std::env::var("KUBINATE__VAULT_KEY_PREFIX")
                 .unwrap_or_else(|_| "kubinate".to_string());
             tracing::info!(prefix = %key_prefix, "secret store: vault transit engine");
             Arc::new(kubinate_platform::secrets::VaultStore::new(
@@ -189,7 +189,7 @@ async fn main() -> anyhow::Result<()> {
             ))
         }
         other => {
-            anyhow::bail!("KUBINATE_SECRETS_BACKEND must be 'pgcrypto' or 'vault'; got '{other}'");
+            anyhow::bail!("KUBINATE__SECRETS_BACKEND must be 'pgcrypto' or 'vault'; got '{other}'");
         }
     };
     let credential_repo = Arc::new(PgHetznerCredentialRepository::new(pool.clone()));
@@ -211,7 +211,7 @@ async fn main() -> anyhow::Result<()> {
         Arc::new(PgInviteRepository::new(pool.clone()));
     let membership_service = Arc::new(MembershipService::new(invite_repo, membership_repo));
 
-    let ssh_identity = std::env::var("KUBINATE_SSH_KEY_PATH")
+    let ssh_identity = std::env::var("KUBINATE__SSH_KEY_PATH")
         .ok()
         .map(std::path::PathBuf::from);
     let ssh_executor = Arc::new(OpensshExecutor::new(ssh_identity));
@@ -248,7 +248,7 @@ async fn main() -> anyhow::Result<()> {
         }
         Ok(None) => {
             tracing::info!(
-                "WebAuthn not configured (KUBINATE_WEBAUTHN_RP_ID + KUBINATE_WEBAUTHN_RP_ORIGIN); passkey routes will return 503"
+                "WebAuthn not configured (KUBINATE__WEBAUTHN_RP_ID + KUBINATE__WEBAUTHN_RP_ORIGIN); passkey routes will return 503"
             );
             None
         }
@@ -278,18 +278,18 @@ async fn main() -> anyhow::Result<()> {
     ));
 
     let cluster_settings = Arc::new(ClusterSettings {
-        ssh_key: std::env::var("KUBINATE_HETZNER_SSH_KEY")
+        ssh_key: std::env::var("KUBINATE__HETZNER_SSH_KEY")
             .unwrap_or_else(|_| "kubinate-operator".to_string()),
-        k3s_version: std::env::var("KUBINATE_K3S_VERSION")
+        k3s_version: std::env::var("KUBINATE__K3S_VERSION")
             .unwrap_or_else(|_| "v1.30.2+k3s1".to_string()),
         user_data: include_str!("../../../infra/cloud-init/k3s-node.yaml").to_string(),
     });
 
     let auth_cfg = Arc::new(AuthConfig {
-        github_client_id: require_env("KUBINATE_GITHUB_CLIENT_ID")?,
-        github_redirect_uri: require_env("KUBINATE_GITHUB_REDIRECT_URI")?,
+        github_client_id: require_env("KUBINATE__GITHUB_CLIENT_ID")?,
+        github_redirect_uri: require_env("KUBINATE__GITHUB_REDIRECT_URI")?,
     });
-    let github_secret = SecretString::from(require_env("KUBINATE_GITHUB_CLIENT_SECRET")?);
+    let github_secret = SecretString::from(require_env("KUBINATE__GITHUB_CLIENT_SECRET")?);
     let github: SharedGithubClient = Arc::new(HttpGithubClient::new(
         auth_cfg.github_client_id.clone(),
         github_secret,
@@ -298,8 +298,8 @@ async fn main() -> anyhow::Result<()> {
     // Stripe billing wiring (Sprint 2 ticket 08). Both env vars must
     // be present in any environment that hits the billing routes; we
     // surface a generic error pre-startup rather than 500-ing later.
-    let stripe_secret = SecretString::from(require_env("KUBINATE_STRIPE_SECRET_KEY")?);
-    let stripe_webhook_secret = SecretString::from(require_env("KUBINATE_STRIPE_WEBHOOK_SECRET")?);
+    let stripe_secret = SecretString::from(require_env("KUBINATE__STRIPE_SECRET_KEY")?);
+    let stripe_webhook_secret = SecretString::from(require_env("KUBINATE__STRIPE_WEBHOOK_SECRET")?);
     let stripe_client: Arc<dyn StripeClient> = Arc::new(HttpStripeClient::new(stripe_secret));
     let billing_repo: Arc<dyn kubinate_billing::repository::BillingRepository> = Arc::new(
         kubinate_billing::repository::PgBillingRepository::new(pool.clone()),
@@ -307,10 +307,10 @@ async fn main() -> anyhow::Result<()> {
     let billing_service = Arc::new(kubinate_billing::service::BillingService::new(
         billing_repo,
         stripe_client,
-        std::env::var("KUBINATE_BILLING_SUCCESS_URL").unwrap_or_else(|_| {
+        std::env::var("KUBINATE__BILLING_SUCCESS_URL").unwrap_or_else(|_| {
             "https://app.kubinate.com/app/settings/billing?status=success".into()
         }),
-        std::env::var("KUBINATE_BILLING_CANCEL_URL").unwrap_or_else(|_| {
+        std::env::var("KUBINATE__BILLING_CANCEL_URL").unwrap_or_else(|_| {
             "https://app.kubinate.com/app/settings/billing?status=cancelled".into()
         }),
     ));
@@ -355,8 +355,8 @@ async fn main() -> anyhow::Result<()> {
         .nest("/v1/clusters", clusters::routes())
         .route("/v1/catalog/clusters", get(clusters::catalog))
         .nest("/v1/integrations/hetzner", integrations::routes())
-        .nest("/v1/organizations/:org_id", team::org_routes())
-        .nest("/v1/organizations/:org_id", billing::org_state_route())
+        .nest("/v1/organizations/{org_id}", team::org_routes())
+        .nest("/v1/organizations/{org_id}", billing::org_state_route())
         .nest("/v1/invites", team::invite_accept_route())
         .nest("/v1/billing", billing::routes())
         .nest("/v1/observability", observability::routes())
@@ -379,7 +379,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Sprint 4 ticket 03 — gated agent gRPC listener on a separate
     // port. Defaults to off; an operator flips
-    // `KUBINATE_AGENT_TUNNEL_ENABLED=1` only after they've stood up
+    // `KUBINATE__AGENT_TUNNEL_ENABLED=1` only after they've stood up
     // the mTLS PKI Sprint 5+ ships. Failing to start does not abort
     // the API.
     agent::spawn_if_enabled();

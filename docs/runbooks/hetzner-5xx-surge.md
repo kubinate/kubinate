@@ -95,7 +95,7 @@ Tunnel issue between us and Hetzner):
 # From any control-plane host. The token must be a read-only
 # operator token, never a tenant token.
 curl -sS -o /dev/null -w "%{http_code}\n" \
-  -H "Authorization: Bearer $KUBINATE_HETZNER_OPERATOR_TOKEN" \
+  -H "Authorization: Bearer $KUBINATE__HETZNER_OPERATOR_TOKEN" \
   https://api.hetzner.cloud/v1/locations
 ```
 

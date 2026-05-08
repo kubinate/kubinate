@@ -116,36 +116,36 @@ impl WebauthnConfig {
     /// but malformed (empty RP id, unparseable origin URL).
     pub fn from_env_optional() -> Result<Option<Self>, WebauthnError> {
         match (
-            std::env::var("KUBINATE_WEBAUTHN_RP_ID").ok(),
-            std::env::var("KUBINATE_WEBAUTHN_RP_ORIGIN").ok(),
+            std::env::var("KUBINATE__WEBAUTHN_RP_ID").ok(),
+            std::env::var("KUBINATE__WEBAUTHN_RP_ORIGIN").ok(),
         ) {
             (Some(_), Some(_)) => Self::from_env().map(Some),
             _ => Ok(None),
         }
     }
 
-    /// Load from `KUBINATE_WEBAUTHN_RP_ID`,
-    /// `KUBINATE_WEBAUTHN_RP_NAME` (defaults `Kubinate`), and
-    /// `KUBINATE_WEBAUTHN_RP_ORIGIN`.
+    /// Load from `KUBINATE__WEBAUTHN_RP_ID`,
+    /// `KUBINATE__WEBAUTHN_RP_NAME` (defaults `Kubinate`), and
+    /// `KUBINATE__WEBAUTHN_RP_ORIGIN`.
     ///
     /// # Errors
     /// Returns [`WebauthnError::Config`] when an env var is
     /// missing, the origin is not a valid URL, or the RP id is
     /// empty.
     pub fn from_env() -> Result<Self, WebauthnError> {
-        let rp_id = std::env::var("KUBINATE_WEBAUTHN_RP_ID")
-            .map_err(|_| WebauthnError::Config("KUBINATE_WEBAUTHN_RP_ID is required".into()))?;
+        let rp_id = std::env::var("KUBINATE__WEBAUTHN_RP_ID")
+            .map_err(|_| WebauthnError::Config("KUBINATE__WEBAUTHN_RP_ID is required".into()))?;
         if rp_id.trim().is_empty() {
             return Err(WebauthnError::Config(
-                "KUBINATE_WEBAUTHN_RP_ID must not be empty".into(),
+                "KUBINATE__WEBAUTHN_RP_ID must not be empty".into(),
             ));
         }
         let rp_name =
-            std::env::var("KUBINATE_WEBAUTHN_RP_NAME").unwrap_or_else(|_| "Kubinate".to_string());
-        let origin_str = std::env::var("KUBINATE_WEBAUTHN_RP_ORIGIN")
-            .map_err(|_| WebauthnError::Config("KUBINATE_WEBAUTHN_RP_ORIGIN is required".into()))?;
+            std::env::var("KUBINATE__WEBAUTHN_RP_NAME").unwrap_or_else(|_| "Kubinate".to_string());
+        let origin_str = std::env::var("KUBINATE__WEBAUTHN_RP_ORIGIN")
+            .map_err(|_| WebauthnError::Config("KUBINATE__WEBAUTHN_RP_ORIGIN is required".into()))?;
         let rp_origin = Url::parse(&origin_str).map_err(|e| {
-            WebauthnError::Config(format!("KUBINATE_WEBAUTHN_RP_ORIGIN invalid url: {e}"))
+            WebauthnError::Config(format!("KUBINATE__WEBAUTHN_RP_ORIGIN invalid url: {e}"))
         })?;
         Ok(Self {
             rp_id,
@@ -616,15 +616,15 @@ mod tests {
         // SAFETY: tests in this crate run single-threaded
         // (`#[tokio::test]` without `multi_thread`) so the env
         // mutation doesn't race.
-        std::env::set_var("KUBINATE_WEBAUTHN_RP_ID", "  ");
-        std::env::set_var("KUBINATE_WEBAUTHN_RP_ORIGIN", "http://localhost:5173");
+        std::env::set_var("KUBINATE__WEBAUTHN_RP_ID", "  ");
+        std::env::set_var("KUBINATE__WEBAUTHN_RP_ORIGIN", "http://localhost:5173");
         let err = WebauthnConfig::from_env().unwrap_err();
         match err {
             WebauthnError::Config(msg) => assert!(msg.contains("must not be empty")),
             other => panic!("unexpected error: {other:?}"),
         }
-        std::env::remove_var("KUBINATE_WEBAUTHN_RP_ID");
-        std::env::remove_var("KUBINATE_WEBAUTHN_RP_ORIGIN");
+        std::env::remove_var("KUBINATE__WEBAUTHN_RP_ID");
+        std::env::remove_var("KUBINATE__WEBAUTHN_RP_ORIGIN");
     }
 
     #[tokio::test]
@@ -643,8 +643,8 @@ mod tests {
     #[tokio::test]
     async fn ceremonies_rejects_origin_host_mismatch() {
         // Belt + suspenders: an operator who sets
-        // KUBINATE_WEBAUTHN_RP_ID=app.kubinate.com but accidentally
-        // points KUBINATE_WEBAUTHN_RP_ORIGIN at https://staging…
+        // KUBINATE__WEBAUTHN_RP_ID=app.kubinate.com but accidentally
+        // points KUBINATE__WEBAUTHN_RP_ORIGIN at https://staging…
         // would silently accept assertions from staging in
         // production. webauthn-rs's WebauthnBuilder rejects this;
         // the test asserts the rejection lands rather than

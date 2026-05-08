@@ -13,10 +13,10 @@
 One-time migration of every encrypted secret in
 [`crates/platform/src/secrets.rs`](../../crates/platform/src/secrets.rs)
 from the Phase 0–2 `PgcryptoStore` (envelope-encrypted blobs in
-`secrets.encrypted_blob` keyed off `KUBINATE_KEK`) to the Phase 3
+`secrets.encrypted_blob` keyed off `KUBINATE__KEK`) to the Phase 3
 `VaultStore` (HashiCorp Vault transit-engine ciphertext under
 `secret/data/kubinate/<organization_id>/<secret_id>`). The
-authoritative cutover signal is the `KUBINATE_SECRETS_BACKEND` env
+authoritative cutover signal is the `KUBINATE__SECRETS_BACKEND` env
 var (`pgcrypto` → `vault`) on the API binary; the migration binary
 (`kubinate-vault-migrate`, name TBC at Sprint 5 build) is what
 actually moves the bytes.
@@ -38,7 +38,7 @@ You're running this runbook because either:
    the operator carrying the change.
 2. **Rollback during cutover.** The cutover started, something
    went wrong (Vault unreachable, AppRole token revoked, API
-   pods unable to reach `KUBINATE_VAULT_ADDR`), and you need to
+   pods unable to reach `KUBINATE__VAULT_ADDR`), and you need to
    flip back to `pgcrypto` without losing data.
 3. **Forward verification.** You ran the cutover yesterday and
    today's checklist pass on the new backend.
@@ -56,7 +56,7 @@ distinct.
   a secret (Hetzner-credentials read, kubeconfig fetch).
 - **SEV-3**: cutover is mid-flight but pgcrypto rows remain
   populated; an operator can flip
-  `KUBINATE_SECRETS_BACKEND=pgcrypto` and the API self-heals
+  `KUBINATE__SECRETS_BACKEND=pgcrypto` and the API self-heals
   within the rolling redeploy window.
 - **SEV-4**: planned cutover under change-management control, no
   customer impact, you have a maintenance window. Most cutovers.
@@ -83,11 +83,11 @@ cutover.
 3. **Postgres backup is fresh.** A point-in-time recovery target
    ≤ 15 min stale. The PITR window is what backstops the rollback
    if a partial migration leaves the row state inconsistent.
-4. **`KUBINATE_KEK` is recoverable.** The current pgcrypto KEK
+4. **`KUBINATE__KEK` is recoverable.** The current pgcrypto KEK
    is committed to the operator vault (NOT the application Vault).
    If the migration somehow corrupts both backends, the KEK +
    the Postgres PITR is the disaster-recovery path.
-5. **`KUBINATE_SECRETS_BACKEND=pgcrypto` is the live env var.**
+5. **`KUBINATE__SECRETS_BACKEND=pgcrypto` is the live env var.**
    Confirm no rolling deploy has it flipped already.
 6. **Maintenance banner posted.** Status page + dashboard banner
    noting "secret-store cutover in progress; brief 5xx blips
@@ -103,7 +103,7 @@ cutover.
    t0 ─────────────────┼─────────────────────┼─────────────────────┼──────►
                        a                     b                     c
    a: migration binary --dry-run + --apply
-   b: KUBINATE_SECRETS_BACKEND=vault rolling deploy
+   b: KUBINATE__SECRETS_BACKEND=vault rolling deploy
    c: pgcrypto column drop (separate sprint)
 ```
 
@@ -112,9 +112,9 @@ cutover.
 ```bash
 kubinate-vault-migrate \
   --dry-run \
-  --pg-url "$KUBINATE_DATABASE_URL" \
-  --vault-addr "$KUBINATE_VAULT_ADDR" \
-  --vault-token "$KUBINATE_VAULT_TOKEN" \
+  --pg-url "$KUBINATE__DATABASE_URL" \
+  --vault-addr "$KUBINATE__VAULT_ADDR" \
+  --vault-token "$KUBINATE__VAULT_TOKEN" \
   --concurrency 8 \
   | tee migrate-dry-run-$(date -u +%Y%m%dT%H%M%SZ).log
 ```
@@ -130,9 +130,9 @@ cutover.
 ```bash
 kubinate-vault-migrate \
   --apply \
-  --pg-url "$KUBINATE_DATABASE_URL" \
-  --vault-addr "$KUBINATE_VAULT_ADDR" \
-  --vault-token "$KUBINATE_VAULT_TOKEN" \
+  --pg-url "$KUBINATE__DATABASE_URL" \
+  --vault-addr "$KUBINATE__VAULT_ADDR" \
+  --vault-token "$KUBINATE__VAULT_TOKEN" \
   --concurrency 8 \
   | tee migrate-apply-$(date -u +%Y%m%dT%H%M%SZ).log
 ```
@@ -145,7 +145,7 @@ is the rollback safety net.
 
 ### Step 3 — flip the env var
 
-Update `KUBINATE_SECRETS_BACKEND=vault` in the API's deployment
+Update `KUBINATE__SECRETS_BACKEND=vault` in the API's deployment
 config and trigger a rolling restart. The `SecretStore` trait
 dispatches at startup based on the env var, so existing pods
 keep using pgcrypto until they're cycled. Watch
@@ -173,7 +173,7 @@ The whole reason the pgcrypto column stays populated is to make
 this a one-line operation:
 
 ```bash
-kubectl -n kubinate set env deployment/api KUBINATE_SECRETS_BACKEND=pgcrypto
+kubectl -n kubinate set env deployment/api KUBINATE__SECRETS_BACKEND=pgcrypto
 kubectl -n kubinate rollout restart deployment/api
 ```
 
@@ -186,7 +186,7 @@ Caveats:
   `--reverse` mode for exactly this case; until then a rollback
   loses any post-cutover writes. Keep the cutover window short
   enough that this matters less than the alternative.
-- The KEK has to still be loadable. `KUBINATE_KEK` is preserved
+- The KEK has to still be loadable. `KUBINATE__KEK` is preserved
   in the deployment config until the post-cutover-week sprint
   ticks the "drop pgcrypto" row. Don't remove it earlier.
 - A rollback **does not** invalidate Vault writes. They sit there

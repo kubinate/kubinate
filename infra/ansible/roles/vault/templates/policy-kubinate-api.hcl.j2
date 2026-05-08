@@ -11,7 +11,7 @@
 //    operator pre-provisioning.
 //
 // CRITICAL: `vault_kubinate_key_prefix` (default `kubinate`) MUST
-// match the `KUBINATE_VAULT_KEY_PREFIX` env var on the API binary,
+// match the `KUBINATE__VAULT_KEY_PREFIX` env var on the API binary,
 // which defaults to `kubinate` in `crates/api/src/main.rs`. If the
 // two diverge, the API gets 403 on every encrypt / decrypt call
 // because the AppRole's policy doesn't cover the path the API is

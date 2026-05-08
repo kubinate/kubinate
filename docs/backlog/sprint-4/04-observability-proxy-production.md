@@ -116,7 +116,7 @@ and names which row from the recommendation matrix fired.
   `VictoriaMetricsStore` lives at
   `crates/observability/src/metrics/victoria.rs`; the
   `InMemoryMetricsStore` stays compiled (used by tests +
-  optional `KUBINATE_OBSERVABILITY_BACKEND=memory` for local
+  optional `KUBINATE__OBSERVABILITY_BACKEND=memory` for local
   dev).
 - VM client: use `reqwest` (already a workspace dep) to call
   remote-write directly. No need for a vendored vmclient crate.

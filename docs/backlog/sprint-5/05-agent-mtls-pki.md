@@ -106,9 +106,9 @@ auth layer.
   trigger; reuse the `audit_log_append_explicit` plumbing
   pattern. Migration ships in this ticket.
 - **Listener migration.** Today the listener runs on a
-  separate gRPC port (`KUBINATE_AGENT_TUNNEL_ADDR`,
+  separate gRPC port (`KUBINATE__AGENT_TUNNEL_ADDR`,
   default 127.0.0.1:8081) gated behind
-  `KUBINATE_AGENT_TUNNEL_ENABLED`. With mTLS landed the
+  `KUBINATE__AGENT_TUNNEL_ENABLED`. With mTLS landed the
   listener moves to its production address (the
   ADR-0014-named host) and the env-var flag flips to
   default-on; the localhost-only fallback drops.

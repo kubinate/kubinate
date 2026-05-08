@@ -50,11 +50,11 @@ const IDEMPOTENCY_TTL: Duration = Duration::hours(24);
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/", post(create).get(list))
-        .route("/:id", get(read).delete(destroy))
-        .route("/:id/kubeconfig", get(download_kubeconfig))
-        .route("/:id/addons", post(install_addon).get(list_addons))
-        .route("/:id/workers", post(scale_workers))
-        .route("/:id/events", get(stream_events))
+        .route("/{id}", get(read).delete(destroy))
+        .route("/{id}/kubeconfig", get(download_kubeconfig))
+        .route("/{id}/addons", post(install_addon).get(list_addons))
+        .route("/{id}/workers", post(scale_workers))
+        .route("/{id}/events", get(stream_events))
 }
 
 #[derive(Deserialize, Serialize)]
