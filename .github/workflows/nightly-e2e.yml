@@ -1,0 +1,183 @@
+name: nightly-e2e
+
+# Implements Sprint 1 ticket 08:
+#   * Provisions a real 1-CP + 1-worker k3s cluster in the Hetzner test
+#     project, asserts kubectl works against it, then destroys.
+#   * Asserts zero residual servers via the Hetzner API.
+#   * Hard 60-minute outer timeout so a failed run can never leave the
+#     test cluster lying around accruing cost.
+#   * On failure, opens a GitHub issue with the workflow run url and a
+#     redacted excerpt of the failure log.
+#
+# Required repository secrets:
+#   HETZNER_TEST_TOKEN     Hetzner Cloud token scoped to the test project
+#   HETZNER_TEST_SSH_KEY   Name of an SSH key registered in that project
+#   HETZNER_TEST_SSH_PRIV  PEM-encoded private key matching the above
+#
+# Security note: every shell step that needs a secret receives it via
+# `env:` rather than direct `${{ }}` interpolation in `run:` (see
+# https://github.blog/security/vulnerability-research/how-to-catch-github-actions-workflow-injections-before-attackers-do/).
+
+on:
+  schedule:
+    - cron: '0 4 * * *'   # 04:00 UTC nightly (DoD)
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Manual trigger reason (logged in the run)'
+        required: false
+
+permissions:
+  contents: read
+  issues: write   # for the failure-creates-issue path (DoD)
+
+jobs:
+  e2e:
+    name: provision + destroy on Hetzner
+    runs-on: ubuntu-24.04
+    timeout-minutes: 65   # outer guard — the binary itself enforces 60m
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: kubinate
+          POSTGRES_PASSWORD: kubinate
+          POSTGRES_DB: kubinate
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U kubinate"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgres://kubinate:kubinate@localhost:5432/kubinate
+      KUBINATE_TEST_HETZNER_TOKEN: ${{ secrets.HETZNER_TEST_TOKEN }}
+      KUBINATE_HETZNER_SSH_KEY: ${{ secrets.HETZNER_TEST_SSH_KEY }}
+      KUBINATE_SSH_KEY_PATH: ${{ github.workspace }}/.e2e-ssh-key
+      RUST_LOG: info,sqlx=warn
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.90'
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: 'v1.30.2'
+
+      - name: Generate KEK for this run
+        # Each run gets a unique KEK; the seed org is also unique per run,
+        # so old runs' encrypted blobs can never accidentally be decrypted
+        # by a later run.
+        run: |
+          echo "KUBINATE_KEK=$(openssl rand -base64 32 | tr -d '\n')" >> "$GITHUB_ENV"
+
+      - name: Materialise SSH private key
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.HETZNER_TEST_SSH_PRIV }}
+        run: |
+          umask 077
+          printf '%s' "$SSH_PRIVATE_KEY" > "$KUBINATE_SSH_KEY_PATH"
+          chmod 600 "$KUBINATE_SSH_KEY_PATH"
+
+      - name: Build e2e harness
+        run: cargo build --release -p kubinate-e2e
+
+      - name: Run e2e harness
+        id: e2e
+        run: |
+          set -o pipefail
+          ./target/release/kubinate-e2e 2>&1 | tee e2e.log
+        continue-on-error: true
+
+      # Backup safety net: even if the harness aborts before destroy
+      # (e.g. panic, OOM), list every server tagged with our nightly
+      # marker label and force-delete. Belt + suspenders for the
+      # "never lives more than 60 minutes" DoD row.
+      - name: Force-destroy any orphaned test servers
+        if: always()
+        env:
+          HCLOUD_TOKEN: ${{ secrets.HETZNER_TEST_TOKEN }}
+        run: |
+          set -e
+          # We tag every server with kubinate.idempotency_key=<cluster_id>;
+          # sweeping by the namespace label keeps this safe even if the
+          # specific cluster id was lost.
+          curl -sS -H "Authorization: Bearer $HCLOUD_TOKEN" \
+            "https://api.hetzner.cloud/v1/servers?label_selector=kubinate.idempotency_key" \
+            | python3 -c '
+import json, sys, os, urllib.request
+data = json.load(sys.stdin)
+token = os.environ["HCLOUD_TOKEN"]
+for srv in data.get("servers", []):
+    print(f"force-deleting orphan {srv[\"id\"]} ({srv[\"name\"]})")
+    req = urllib.request.Request(
+        f"https://api.hetzner.cloud/v1/servers/{srv[\"id\"]}",
+        method="DELETE",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    try:
+        urllib.request.urlopen(req).read()
+    except Exception as e:
+        print(f"  delete failed: {e}", file=sys.stderr)
+'
+
+      - name: Open GitHub issue on failure
+        if: steps.e2e.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HETZNER_TOKEN: ${{ secrets.HETZNER_TEST_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          ISSUE_DATE: ${{ github.run_number }}
+        # The harness binary captures the failing workflow id + failing
+        # activity in the log excerpt below; the "failing activity" is
+        # also reflected in the `status_reason` of the seed cluster
+        # before the harness drops the org. Body assembled in a heredoc
+        # to avoid `${{ }}` inside `gh issue create --body`.
+        run: |
+          set -e
+          # Tail the log and redact the Hetzner token if it ever leaked
+          # in. The token comes through env so we substitute via shell,
+          # not via a templated `${{ }}` inside `run:`.
+          tail -n 50 e2e.log \
+            | sed "s|$HETZNER_TOKEN|<redacted>|g" \
+            > excerpt.log
+          {
+            echo "Run: $RUN_URL"
+            echo
+            echo "The nightly E2E job failed. The harness binary captures the failing"
+            echo "workflow id + failing activity in the log excerpt below; the"
+            echo '"failing activity" is also reflected in the `status_reason` of the'
+            echo "seed cluster row before the harness drops the org."
+            echo
+            echo '```'
+            cat excerpt.log
+            echo '```'
+            echo
+            echo "See \`docs/runbooks/hetzner-5xx-surge.md\` and"
+            echo "\`docs/runbooks/provisioning-workflow-stuck.md\` for triage flows."
+          } > issue-body.md
+          gh issue create \
+            --title "Nightly E2E failed: $(date -u +%Y-%m-%d) (run #$ISSUE_DATE)" \
+            --label "area/sre,nightly-e2e,bug" \
+            --body-file issue-body.md
+
+      - name: Report harness exit status
+        if: always()
+        env:
+          E2E_OUTCOME: ${{ steps.e2e.outcome }}
+        run: |
+          if [ "$E2E_OUTCOME" = "failure" ]; then
+            echo "::error::E2E run failed — see issue + run logs"
+            exit 1
+          fi

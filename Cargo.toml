@@ -1,0 +1,116 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/api",
+    "crates/identity",
+    "crates/cluster",
+    "crates/addons",
+    "crates/observability",
+    "crates/billing",
+    "crates/integrations",
+    "crates/platform",
+    "crates/workflows",
+    "crates/agent-proto",
+    "crates/e2e",
+    "agent",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.90"
+authors = ["Kubinate"]
+license = "AGPL-3.0-or-later"
+repository = "https://github.com/kubinate/kubinate"
+readme = "README.md"
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+futures = "0.3"
+async-trait = "0.1"
+
+# Web framework
+axum = { version = "0.8", features = ["macros", "http2", "tracing"] }
+axum-extra = { version = "0.10", features = ["cookie", "typed-header"] }
+tower = { version = "0.5", features = ["full"] }
+tower-http = { version = "0.6", features = ["trace", "cors", "compression-gzip", "request-id", "sensitive-headers", "timeout", "catch-panic"] }
+hyper = "1"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+
+# Database
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "postgres", "uuid", "time", "json", "macros", "migrate"] }
+
+# Cache / message bus
+redis = { version = "0.27", features = ["tokio-comp", "connection-manager"] }
+
+# Observability
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "fmt"] }
+tracing-opentelemetry = "0.28"
+opentelemetry = "0.27"
+opentelemetry_sdk = { version = "0.27", features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "0.27", features = ["grpc-tonic", "trace"] }
+metrics = "0.24"
+metrics-exporter-prometheus = { version = "0.16", default-features = false }
+
+# Errors
+thiserror = "2"
+anyhow = "1"
+
+# IDs and time
+uuid = { version = "1", features = ["v4", "v5", "v7", "serde"] }
+time = { version = "0.3", features = ["serde", "macros"] }
+
+# gRPC
+tonic = { version = "0.12", features = ["tls"] }
+tonic-build = "0.12"
+prost = "0.13"
+prost-types = "0.13"
+
+# Cryptography
+ring = "0.17"
+rustls = "0.23"
+rustls-pemfile = "2"
+aes-gcm = "0.10"
+argon2 = "0.5"
+webauthn-rs = { version = "0.5", features = ["danger-allow-state-serialisation"] }
+
+# HTTP client
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
+
+# Utilities
+bytes = "1"
+url = "2"
+dotenvy = "0.15"
+rand = "0.8"
+sha2 = "0.10"
+config = "0.14"
+secrecy = { version = "0.10", features = ["serde"] }
+base64 = "0.22"
+
+# Test
+mockall = "0.13"
+wiremock = "0.6"
+rstest = "0.23"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+
+[profile.dev]
+opt-level = 0
+debug = true
+
+# A shared profile for CI where we want a fast build and all checks
+[profile.ci]
+inherits = "dev"
+debug = "line-tables-only"
+incremental = false

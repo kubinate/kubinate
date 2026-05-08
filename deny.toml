@@ -1,0 +1,80 @@
+# cargo-deny configuration.
+# https://embarkstudios.github.io/cargo-deny/
+
+[graph]
+all-features = false
+no-default-features = false
+
+[output]
+feature-depth = 1
+
+# ------------------------------------------------------------------
+# Security advisories — block known vulnerable crates.
+# ------------------------------------------------------------------
+[advisories]
+version = 2
+db-path = "~/.cargo/advisory-db"
+db-urls = ["https://github.com/rustsec/advisory-db"]
+yanked = "deny"
+ignore = [
+    # List advisory IDs here with a reason and an owner, e.g.:
+    # { id = "RUSTSEC-2024-XXXX", reason = "no fix yet; mitigated by ...", until = "2026-12-31" }
+]
+
+# ------------------------------------------------------------------
+# License allowlist. Add a license ONLY after a deliberate review.
+# ------------------------------------------------------------------
+[licenses]
+version = 2
+confidence-threshold = 0.9
+allow = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "MIT",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-DFS-2016",
+    "Unicode-3.0",
+    "Zlib",
+    "CC0-1.0",
+    "MPL-2.0",
+]
+exceptions = [
+    # Add per-crate exceptions if a crate we trust is single-licensed
+    # under something not in the allowlist.
+]
+
+[[licenses.clarify]]
+name = "ring"
+expression = "MIT AND ISC AND OpenSSL"
+license-files = [{ path = "LICENSE", hash = 0xbd0eed23 }]
+
+# ------------------------------------------------------------------
+# Sources — only crates.io and our allowed git hosts.
+# ------------------------------------------------------------------
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = [
+    # Temporal Rust SDK may need a git dependency before it's on crates.io;
+    # add it here only after signoff.
+]
+
+# ------------------------------------------------------------------
+# Bans — force canonical dependencies, disallow known-bad combinations.
+# ------------------------------------------------------------------
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+highlight = "all"
+# Deny crates that are obsolete replacements (e.g. chrono predates
+# the time 0.3 rewrite; if we need dates, use time::).
+deny = [
+    { name = "openssl", reason = "use rustls" },
+    { name = "openssl-sys", reason = "use rustls" },
+]
+# Skip duplicate version warnings for transitive churn we don't control.
+skip = []
+skip-tree = []

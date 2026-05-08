@@ -1,0 +1,6 @@
+[toolchain]
+# 1.85 is the first stable with edition2024 (now required by several deps
+# including home, backon, time-core). Bumped from 1.82 in Sprint 1.
+channel = "1.90"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

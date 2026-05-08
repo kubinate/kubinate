@@ -1,0 +1,41 @@
+# Rust
+/target
+**/target/
+
+# Node / SvelteKit (frontend/)
+node_modules/
+/frontend/.svelte-kit/
+/frontend/build/
+/frontend/dist/
+/frontend/.vercel/
+/frontend/.wrangler/
+**/node_modules/
+
+# Local env — copy .env.example to .env and keep it out of git
+.env
+.env.local
+.env.*.local
+
+# OS / editor junk
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+
+# Test / coverage output
+/frontend/coverage/
+*.log
+
+# Temporary files
+*.tmp
+*.bak
+
+# Terraform — state, lock info, and tfvars. See infra/terraform/.gitignore
+# for the module-local patterns.
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+**/terraform.tfvars
+**/*.auto.tfvars
+**/*.auto.tfvars.json

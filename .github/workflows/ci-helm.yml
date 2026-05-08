@@ -1,0 +1,191 @@
+name: ci-helm
+
+# Sprint 3 ticket 05 — kind cluster runner for the Helm install path.
+#
+# Closes Sprint 2 ticket 07's last DoD row ("Integration test against
+# a kind/k3d cluster"). Pulled out of `ci.yml` because the kind setup
+# adds 1–2 minutes of wallclock and we don't want to pay it on every
+# PR; this one is gated on the `e2e/helm` PR label and a manual
+# `workflow_dispatch`.
+#
+# What it does:
+#   1. Spin up a kind cluster on the GitHub-hosted runner.
+#   2. Build the dedicated `kubinate-e2e-helm` binary, which calls
+#      the production `install_addon` workflow with the real
+#      `HelmCliExecutor`.
+#   3. Run that against `ingress-nginx` and `cert-manager` in the
+#      same kind cluster, asserting every Pod reaches `Ready`.
+#   4. On failure, dump the last 100 lines of every Pod's logs into
+#      the run summary, then open a GitHub issue (mirrors the
+#      `nightly-e2e.yml` pattern).
+#
+# Wallclock target: < 6 minutes (DoD row).
+#
+# Security note: every shell step routes user-controlled input
+# through `env:` rather than `${{ }}` interpolation in `run:`. See
+# https://github.blog/security/vulnerability-research/how-to-catch-github-actions-workflow-injections-before-attackers-do/
+
+on:
+  pull_request:
+    types: [labeled, synchronize]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Manual trigger reason (logged in the run)'
+        required: false
+
+permissions:
+  contents: read
+  issues: write   # for the failure-creates-issue path (DoD)
+
+concurrency:
+  group: ci-helm-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  kind-helm:
+    name: kind — install_addon happy path
+    # `pull_request` events fire for every label change, but we only
+    # want to run when the gating label is set. `workflow_dispatch`
+    # bypasses this. The `synchronize` event (new commits on a
+    # labelled PR) re-runs without a label change.
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || (github.event_name == 'pull_request'
+          && contains(github.event.pull_request.labels.*.name, 'e2e/helm'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12   # outer guard; the binary's own deadline is 7m
+
+    env:
+      KIND_VERSION: v0.24.0
+      KIND_NODE_IMAGE: kindest/node:v1.30.0
+      KUBECONFIG: ${{ github.workspace }}/.kind-kubeconfig
+      RUST_LOG: info,sqlx=warn
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.90'
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ci-helm
+
+      - name: Build kubinate-e2e-helm
+        # Build before kind so that a Rust compile failure aborts the
+        # job before paying for the cluster.
+        run: cargo build --release -p kubinate-e2e --bin kubinate-e2e-helm
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: 'v1.30.2'
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: 'v3.15.4'
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+        with:
+          version: ${{ env.KIND_VERSION }}
+          node_image: ${{ env.KIND_NODE_IMAGE }}
+          cluster_name: kubinate-helm-ci
+          kubeconfig: ${{ env.KUBECONFIG }}
+          wait: 60s
+
+      - name: Confirm cluster is reachable
+        run: |
+          kubectl cluster-info
+          kubectl get nodes
+
+      - name: Install ingress-nginx via the workflow
+        id: ingress
+        run: |
+          ./target/release/kubinate-e2e-helm \
+            --kubeconfig "$KUBECONFIG" \
+            --addon ingress-nginx \
+            --version 4.10.0 \
+            2>&1 | tee ingress.log
+
+      - name: Install cert-manager via the workflow
+        id: certmgr
+        run: |
+          ./target/release/kubinate-e2e-helm \
+            --kubeconfig "$KUBECONFIG" \
+            --addon cert-manager \
+            --version v1.16.0 \
+            2>&1 | tee certmgr.log
+
+      # Failure-only: dump every Pod's recent logs into the run
+      # summary so the PR check page surfaces context, not just an
+      # exit code (DoD row).
+      - name: Capture pod logs on failure
+        if: failure()
+        run: |
+          {
+            echo "## kind-helm failure — pod state snapshot"
+            echo
+            for ns in ingress-nginx cert-manager kube-system; do
+              echo "### namespace: $ns"
+              echo
+              echo '```'
+              kubectl -n "$ns" get pods -o wide || true
+              echo '```'
+              echo
+              for pod in $(kubectl -n "$ns" get pods -o name 2>/dev/null); do
+                echo "#### $ns/$pod"
+                echo '```'
+                kubectl -n "$ns" describe "$pod" | tail -n 50 || true
+                echo
+                echo '--- logs ---'
+                kubectl -n "$ns" logs "$pod" --all-containers --tail=100 \
+                  --previous=false 2>&1 | tail -n 100 || true
+                echo '```'
+                echo
+              done
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Open GitHub issue on failure
+        # Only for the manual-dispatch case — opening an issue on
+        # every failed PR run would be noise. PR failures already
+        # show in the check page.
+        if: failure() && github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          set -e
+          {
+            echo "Run: $RUN_URL"
+            echo
+            echo "The kind-helm job failed. The job summary contains the pod state"
+            echo "snapshot + recent logs for ingress-nginx, cert-manager, and"
+            echo "kube-system. The two .log files attached as run artefacts hold the"
+            echo "stdout from the harness binary itself."
+            echo
+            echo "See \`docs/runbooks/addon-install-stuck.md\` for triage flow."
+          } > issue-body.md
+          gh issue create \
+            --title "ci-helm failed: $(date -u +%Y-%m-%d) (run #${RUN_NUMBER})" \
+            --label "area/sre,ci-helm,bug" \
+            --body-file issue-body.md
+
+      - name: Upload harness logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-helm-logs
+          path: |
+            ingress.log
+            certmgr.log
+          if-no-files-found: ignore
+          retention-days: 7
