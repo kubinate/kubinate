@@ -30,7 +30,7 @@ use std::sync::Arc;
 
 use axum::{
     extract::{Path, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::IntoResponse,
     routing::{delete, get, post},
     Json, Router,
@@ -39,7 +39,7 @@ use kubinate_identity::{
     recovery_codes as rc, session,
     webauthn::{Ceremonies, CompletedAssertion, CompletedRegistration, WebauthnError},
 };
-use kubinate_platform::error::PlatformError;
+use kubinate_platform::{audit, error::PlatformError};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -48,7 +48,7 @@ use webauthn_rs::prelude::{
     RequestChallengeResponse,
 };
 
-use crate::{actor::Actor, actor::SessionUser, problem::ApiError, AppState};
+use crate::{actor::Actor, actor::SessionUser, audit_ctx, problem::ApiError, AppState};
 
 /// Mount the passkey routes.
 pub fn routes() -> Router<AppState> {
@@ -157,6 +157,7 @@ struct PasskeyView {
 async fn register_finish(
     State(state): State<AppState>,
     actor: Actor,
+    headers: HeaderMap,
     Json(req): Json<RegisterFinishRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
     let ceremonies = require_ceremonies(&state)?;
@@ -180,6 +181,17 @@ async fn register_finish(
         .insert(actor.user_id, &credential_id, &credential_blob, &nickname)
         .await
         .map_err(ApiError::from)?;
+
+    audit_passkey_event_for_actor(
+        &state,
+        &actor,
+        &headers,
+        "passkey.enrolled",
+        "user_passkey",
+        Some(&row.id.to_string()),
+        serde_json::json!({ "nickname": &row.nickname }),
+    )
+    .await?;
 
     Ok((
         StatusCode::CREATED,
@@ -250,6 +262,7 @@ struct AssertFinishResponse {
 async fn assert_finish(
     State(state): State<AppState>,
     user: SessionUser,
+    headers: HeaderMap,
     Json(req): Json<AssertFinishRequest>,
 ) -> Result<Json<AssertFinishResponse>, ApiError> {
     let ceremonies = require_ceremonies(&state)?;
@@ -308,6 +321,17 @@ async fn assert_finish(
             .map_err(ApiError::from)?;
     }
 
+    audit_passkey_event_for_user(
+        &state,
+        user.user_id,
+        &headers,
+        "passkey.used",
+        "user_passkey",
+        Some(&row.id.to_string()),
+        serde_json::json!({ "session_id": user.session_id }),
+    )
+    .await?;
+
     Ok(Json(AssertFinishResponse {
         mfa_satisfied: true,
     }))
@@ -339,6 +363,7 @@ async fn list(
 async fn revoke(
     State(state): State<AppState>,
     actor: Actor,
+    headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, ApiError> {
     state
@@ -346,6 +371,18 @@ async fn revoke(
         .revoke(actor.user_id, id)
         .await
         .map_err(ApiError::from)?;
+
+    audit_passkey_event_for_actor(
+        &state,
+        &actor,
+        &headers,
+        "passkey.revoked",
+        "user_passkey",
+        Some(&id.to_string()),
+        serde_json::json!({}),
+    )
+    .await?;
+
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -427,6 +464,7 @@ struct RecoveryRegenerateResponse {
 async fn recovery_regenerate(
     State(state): State<AppState>,
     actor: Actor,
+    headers: HeaderMap,
 ) -> Result<Json<RecoveryRegenerateResponse>, ApiError> {
     // Generate fresh batch — entropy from the OS RNG. Scoped tightly
     // because `ThreadRng` is `!Send`; holding it across the .await
@@ -447,6 +485,17 @@ async fn recovery_regenerate(
 
     #[allow(clippy::cast_possible_truncation)]
     let total = plaintext_codes.len() as u32;
+
+    audit_passkey_event_for_actor(
+        &state,
+        &actor,
+        &headers,
+        "recovery_codes.regenerated",
+        "user",
+        Some(&actor.user_id.to_string()),
+        serde_json::json!({ "total": total }),
+    )
+    .await?;
     Ok(Json(RecoveryRegenerateResponse {
         codes: plaintext_codes,
         total,
@@ -473,6 +522,7 @@ struct RecoveryRedeemResponse {
 async fn recovery_redeem(
     State(state): State<AppState>,
     user: SessionUser,
+    headers: HeaderMap,
     Json(req): Json<RecoveryRedeemRequest>,
 ) -> Result<Json<RecoveryRedeemResponse>, ApiError> {
     let hash = rc::hash(&req.code);
@@ -484,8 +534,21 @@ async fn recovery_redeem(
     if !consumed {
         // Same response shape as a wrong WebAuthn assertion —
         // attacker can't distinguish "no such code" from "wrong
-        // code" from a 403 alone. Audit-log enrichment is a
-        // follow-up so a brute-force attempt still surfaces.
+        // code" from a 403 alone. Failed attempts ARE audit-worthy
+        // (a brute-force attempt should surface) — record before
+        // returning so the chain reflects the attempt with
+        // `decision = denied`.
+        let _ = audit_passkey_event_for_user_with_decision(
+            &state,
+            user.user_id,
+            &headers,
+            "recovery_codes.redeem_failed",
+            "user",
+            Some(&user.user_id.to_string()),
+            "denied",
+            serde_json::json!({}),
+        )
+        .await;
         return Err(ApiError::from(PlatformError::Forbidden(
             "recovery code is invalid or already used".into(),
         )));
@@ -504,8 +567,158 @@ async fn recovery_redeem(
         .count_live(user.user_id)
         .await
         .map_err(ApiError::from)?;
+
+    audit_passkey_event_for_user(
+        &state,
+        user.user_id,
+        &headers,
+        "recovery_codes.redeemed",
+        "user",
+        Some(&user.user_id.to_string()),
+        serde_json::json!({ "remaining": remaining }),
+    )
+    .await?;
+
     Ok(Json(RecoveryRedeemResponse {
         mfa_satisfied: true,
         remaining,
     }))
+}
+
+// --- audit helpers ---------------------------------------------------------
+
+/// Append a single per-tenant audit row when the actor's active
+/// organization is known (every full-session passkey lifecycle
+/// endpoint).
+async fn audit_passkey_event_for_actor(
+    state: &AppState,
+    actor: &Actor,
+    headers: &HeaderMap,
+    action: &str,
+    resource_type: &str,
+    resource_id: Option<&str>,
+    metadata: serde_json::Value,
+) -> Result<(), ApiError> {
+    let mut tx = state.db.begin().await.map_err(PlatformError::from)?;
+    sqlx::query(&format!(
+        "SET LOCAL app.current_tenant_id = '{}'",
+        actor.organization_id
+    ))
+    .execute(&mut *tx)
+    .await
+    .map_err(PlatformError::from)?;
+
+    let ctx = audit_ctx::from_actor_and_headers(actor, headers);
+    ctx.apply(&mut *tx).await.map_err(ApiError::from)?;
+
+    audit::append_explicit(
+        &mut *tx,
+        actor.organization_id,
+        action,
+        resource_type,
+        resource_id,
+        "allowed",
+        metadata,
+    )
+    .await
+    .map_err(ApiError::from)?;
+
+    tx.commit().await.map_err(PlatformError::from)?;
+    Ok(())
+}
+
+/// Fan-out audit append for partial-session (`SessionUser`) endpoints
+/// that don't carry an active-organization claim. The audit chain is
+/// per-tenant; an MFA event for a multi-org Owner needs to land in
+/// every tenant whose chain that user can authorise actions against,
+/// otherwise the post-incident question "which tenant's chain shows
+/// the assertion?" has no honest answer.
+///
+/// Skips users with zero Owner/Admin memberships — by construction
+/// the partial-session gate doesn't fire for them, so an assertion
+/// or recovery-code redeem from such a user is voluntary and not
+/// captured in any tenant's chain. The behaviour is logged so an
+/// operator who wants tenant-less audit (a future global chain) can
+/// see how many events would have been captured.
+async fn audit_passkey_event_for_user(
+    state: &AppState,
+    user_id: Uuid,
+    headers: &HeaderMap,
+    action: &str,
+    resource_type: &str,
+    resource_id: Option<&str>,
+    metadata: serde_json::Value,
+) -> Result<(), ApiError> {
+    audit_passkey_event_for_user_with_decision(
+        state,
+        user_id,
+        headers,
+        action,
+        resource_type,
+        resource_id,
+        "allowed",
+        metadata,
+    )
+    .await
+}
+
+/// Same as [`audit_passkey_event_for_user`] but with an explicit
+/// `decision` field — used by the failed-redeem path where the
+/// chain entry needs `denied` rather than `allowed`.
+async fn audit_passkey_event_for_user_with_decision(
+    state: &AppState,
+    user_id: Uuid,
+    headers: &HeaderMap,
+    action: &str,
+    resource_type: &str,
+    resource_id: Option<&str>,
+    decision: &str,
+    metadata: serde_json::Value,
+) -> Result<(), ApiError> {
+    let memberships: Vec<(Uuid,)> = sqlx::query_as(
+        "SELECT organization_id FROM memberships
+         WHERE user_id = $1
+           AND deleted_at IS NULL
+           AND role IN ('owner', 'admin')",
+    )
+    .bind(user_id)
+    .fetch_all(&state.db)
+    .await
+    .map_err(PlatformError::from)?;
+
+    if memberships.is_empty() {
+        tracing::debug!(
+            user_id = %user_id,
+            action = action,
+            "passkey event for user with no Owner/Admin memberships; \
+             no per-tenant chain to record on"
+        );
+        return Ok(());
+    }
+
+    for (org_id,) in memberships {
+        let mut tx = state.db.begin().await.map_err(PlatformError::from)?;
+        sqlx::query(&format!("SET LOCAL app.current_tenant_id = '{org_id}'"))
+            .execute(&mut *tx)
+            .await
+            .map_err(PlatformError::from)?;
+
+        let ctx = audit_ctx::from_user_id_and_headers(user_id, headers);
+        ctx.apply(&mut *tx).await.map_err(ApiError::from)?;
+
+        audit::append_explicit(
+            &mut *tx,
+            org_id,
+            action,
+            resource_type,
+            resource_id,
+            decision,
+            metadata.clone(),
+        )
+        .await
+        .map_err(ApiError::from)?;
+
+        tx.commit().await.map_err(PlatformError::from)?;
+    }
+    Ok(())
 }

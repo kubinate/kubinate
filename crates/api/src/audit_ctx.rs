@@ -5,6 +5,7 @@
 
 use axum::http::{header, HeaderMap};
 use kubinate_platform::audit::AuditContext;
+use uuid::Uuid;
 
 use crate::actor::Actor;
 
@@ -24,6 +25,26 @@ use crate::actor::Actor;
 pub fn from_actor_and_headers(actor: &Actor, headers: &HeaderMap) -> AuditContext {
     AuditContext {
         actor_user_id: Some(actor.user_id).filter(|u| !u.is_nil()),
+        request_id: headers
+            .get("x-request-id")
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_owned),
+        ip: None,
+        user_agent: headers
+            .get(header::USER_AGENT)
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_owned),
+    }
+}
+
+/// Variant for endpoints that authenticate via [`crate::actor::SessionUser`]
+/// rather than [`Actor`] — partial-MFA sessions that haven't bound an
+/// organization yet (`/v1/auth/passkey/assert/finish`,
+/// `/v1/auth/passkey/recovery/redeem`).
+#[must_use]
+pub fn from_user_id_and_headers(user_id: Uuid, headers: &HeaderMap) -> AuditContext {
+    AuditContext {
+        actor_user_id: Some(user_id).filter(|u| !u.is_nil()),
         request_id: headers
             .get("x-request-id")
             .and_then(|v| v.to_str().ok())
