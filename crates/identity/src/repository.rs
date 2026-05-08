@@ -825,6 +825,15 @@ impl PasskeyRepository for PgPasskeyRepository {
         nickname: &str,
     ) -> Result<Passkey, PlatformError> {
         let id = Uuid::now_v7();
+        // Insert the passkey and flip `users.mfa_enrolled = TRUE` in a
+        // single transaction. The flag is what the OAuth callback
+        // reads to decide between a full and a partial session, so a
+        // crash between the two writes would leave a user with a
+        // registered passkey but no MFA gate — exactly the failure
+        // mode this column exists to prevent. The UPDATE is
+        // unconditional (idempotent on already-TRUE rows) — cheaper
+        // than a SELECT-then-UPDATE round trip.
+        let mut tx = self.pool.begin().await?;
         let row = sqlx::query(
             r"
             INSERT INTO user_passkeys
@@ -839,7 +848,7 @@ impl PasskeyRepository for PgPasskeyRepository {
         .bind(credential_id)
         .bind(credential)
         .bind(nickname)
-        .fetch_one(&self.pool)
+        .fetch_one(&mut *tx)
         .await
         .map_err(|err| {
             if let sqlx::Error::Database(db_err) = &err {
@@ -849,6 +858,11 @@ impl PasskeyRepository for PgPasskeyRepository {
             }
             PlatformError::Database(err)
         })?;
+        sqlx::query("UPDATE users SET mfa_enrolled = TRUE WHERE id = $1")
+            .bind(user_id)
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
         Ok(row_to_passkey(&row))
     }
 
@@ -942,6 +956,17 @@ impl PasskeyRepository for PgPasskeyRepository {
         // it's already revoked. The three cases are
         // indistinguishable to the caller — none of them admit
         // information about other users' passkeys.
+        //
+        // Revoking the user's last live passkey clears
+        // `users.mfa_enrolled`. Same lockstep argument as `insert`:
+        // leaving the flag TRUE after the last passkey is gone
+        // would lock the user out (partial session forever, no
+        // credential to satisfy it) — which is exactly the
+        // failure mode the recovery runbook treats as SEV. The
+        // count + flag flip share the transaction with the
+        // revoke so a crash mid-flight can't leave the two out
+        // of sync.
+        let mut tx = self.pool.begin().await?;
         let result = sqlx::query(
             r"
             UPDATE user_passkeys
@@ -951,11 +976,25 @@ impl PasskeyRepository for PgPasskeyRepository {
         )
         .bind(passkey_id)
         .bind(user_id)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
         if result.rows_affected() != 1 {
             return Err(PlatformError::NotFound(format!("passkey/{passkey_id}")));
         }
+        let live_remaining: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM user_passkeys
+             WHERE user_id = $1 AND revoked_at IS NULL",
+        )
+        .bind(user_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        if live_remaining == 0 {
+            sqlx::query("UPDATE users SET mfa_enrolled = FALSE WHERE id = $1")
+                .bind(user_id)
+                .execute(&mut *tx)
+                .await?;
+        }
+        tx.commit().await?;
         Ok(())
     }
 }

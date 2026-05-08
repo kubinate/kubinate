@@ -127,6 +127,43 @@ pub async fn issue_partial_mfa(
     })
 }
 
+/// Decide whether the OAuth callback should issue a partial session
+/// for `user_id`.
+///
+/// The condition the ticket commits to: `users.mfa_enrolled = TRUE`
+/// AND the user holds at least one Owner or Admin membership that
+/// hasn't been soft-deleted. Members and viewers can register
+/// passkeys (the `mfa_enrolled` bit will flip true) but the gate
+/// still doesn't fire for them — voluntary MFA stays voluntary
+/// until a follow-up flips the policy.
+///
+/// Single round-trip: the existence subquery short-circuits in
+/// Postgres so the membership scan stops at the first match.
+pub async fn user_requires_partial_session(
+    pool: &PgPool,
+    user_id: Uuid,
+) -> Result<bool, PlatformError> {
+    let row: Option<(bool,)> = sqlx::query_as(
+        r"
+        SELECT (
+          u.mfa_enrolled
+          AND EXISTS (
+            SELECT 1 FROM memberships m
+            WHERE m.user_id = u.id
+              AND m.deleted_at IS NULL
+              AND m.role IN ('owner', 'admin')
+          )
+        )
+        FROM users u
+        WHERE u.id = $1
+        ",
+    )
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.map_or(false, |(b,)| b))
+}
+
 /// Promote a partial-MFA session after a successful WebAuthn
 /// assertion. Idempotent: re-running on an already-satisfied session
 /// is a no-op (returns `Ok(())`).

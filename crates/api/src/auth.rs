@@ -145,7 +145,23 @@ async fn callback(
     let ua = headers
         .get(header::USER_AGENT)
         .and_then(|v| v.to_str().ok());
-    let session = session::issue(&mut tx, user_id, ua, None).await?;
+    // Sprint 4 ticket 05: branch on whether this user holds an
+    // Owner/Admin membership AND has at least one passkey
+    // registered. The check has to run after `upsert_identity` (so
+    // the user row exists for first-time logins; no passkey can
+    // exist yet, so the predicate always returns false there) and
+    // before session issuance (the issued session's
+    // `mfa_satisfied` bit is the gate). Running the helper against
+    // the pool rather than `tx` is intentional: the read sees
+    // committed state only, which matches the threat-model — the
+    // OAuth callback has no business reading uncommitted writes
+    // from its own transaction for an authorization decision.
+    let needs_partial = session::user_requires_partial_session(&state.db, user_id).await?;
+    let session = if needs_partial {
+        session::issue_partial_mfa(&mut tx, user_id, ua, None).await?
+    } else {
+        session::issue(&mut tx, user_id, ua, None).await?
+    };
     tx.commit().await.map_err(PlatformError::from)?;
 
     let cookie = format!(
