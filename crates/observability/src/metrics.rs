@@ -2,7 +2,7 @@
 //!
 //! Wire format: JSON. The production target is Prometheus
 //! remote-write protobuf; we'll swap when the agent reverse tunnel
-//! lands and the backend (VictoriaMetrics in the default rec; see
+//! lands and the backend (`VictoriaMetrics` in the default rec; see
 //! `docs/decisions/sprint-3-observability-tsdb.md`) is wired.
 //!
 //! The shape here is the smallest thing that exercises the
@@ -55,7 +55,7 @@ pub enum MetricsError {
 /// `organization_id` never appears here.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Label {
-    /// Label name. Conventionally lower_snake; `__name__` for the
+    /// Label name. Conventionally `lower_snake`; `__name__` for the
     /// series name itself.
     pub name: String,
     /// Label value. Free-form UTF-8.
@@ -90,7 +90,7 @@ pub struct WriteRequest {
 /// Range query. The matcher set is intentionally minimal in the
 /// scaffold — equality on `__name__` plus zero-or-more equality
 /// matchers on labels. The live VM-backed store will accept the
-/// full PromQL matcher set.
+/// full `PromQL` matcher set.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RangeQuery {
     /// Required `__name__` label value.

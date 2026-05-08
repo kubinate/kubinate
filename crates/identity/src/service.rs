@@ -31,6 +31,9 @@ impl HetznerCredentialService {
     ///
     /// If the row insert fails (e.g. duplicate alias), the freshly
     /// stored secret is best-effort cleaned up to avoid orphans.
+    ///
+    /// # Errors
+    /// Returns [`PlatformError`] if the secret store or the database query fails.
     pub async fn create(
         &self,
         organization_id: Uuid,
@@ -60,6 +63,9 @@ impl HetznerCredentialService {
     }
 
     /// List live credentials for the organization, newest first.
+    ///
+    /// # Errors
+    /// Returns [`PlatformError`] if the database query fails.
     pub async fn list(
         &self,
         organization_id: Uuid,
@@ -69,6 +75,10 @@ impl HetznerCredentialService {
 
     /// Resolve a single credential. Tenant-scoped via the repository's
     /// per-call `SET LOCAL`, so cross-tenant reads return `NotFound`.
+    ///
+    /// # Errors
+    /// Returns [`PlatformError`] if the credential is not found or the database
+    /// query fails.
     pub async fn get(
         &self,
         organization_id: Uuid,
@@ -78,6 +88,10 @@ impl HetznerCredentialService {
     }
 
     /// Soft-delete the credential row and zero out the underlying secret.
+    ///
+    /// # Errors
+    /// Returns [`PlatformError`] if the credential is not found or the database
+    /// query fails.
     pub async fn delete(
         &self,
         organization_id: Uuid,
@@ -175,6 +189,10 @@ impl MembershipService {
     /// Create an invite. The actor must have `owner` or `admin` in the
     /// target organization. Returns the raw token once; subsequent
     /// reads of the invite never expose it.
+    ///
+    /// # Errors
+    /// Returns [`InviteError`] if the actor lacks permission or the database
+    /// query fails.
     pub async fn create_invite(
         &self,
         organization_id: Uuid,
@@ -208,6 +226,10 @@ impl MembershipService {
 
     /// List invites for the organization (pending + recently
     /// accepted/revoked, capped server-side).
+    ///
+    /// # Errors
+    /// Returns [`InviteError`] if the actor lacks permission or the database
+    /// query fails.
     pub async fn list_invites(
         &self,
         organization_id: Uuid,
@@ -219,6 +241,10 @@ impl MembershipService {
 
     /// Revoke a pending invite. Idempotent — already-revoked or
     /// already-accepted invites are silently no-op.
+    ///
+    /// # Errors
+    /// Returns [`InviteError`] if the actor lacks permission or the database
+    /// query fails.
     pub async fn revoke_invite(
         &self,
         organization_id: Uuid,
@@ -236,6 +262,11 @@ impl MembershipService {
     /// Accept an invite using the raw token + the post-OIDC user.
     /// The user's email is checked against the invite to prevent
     /// random users with a stolen token from joining the wrong org.
+    ///
+    /// # Errors
+    /// Returns [`InviteError`] if the token is invalid, the invite is
+    /// expired/revoked/accepted, the email does not match, or the database
+    /// query fails.
     pub async fn accept_invite(
         &self,
         token: SecretString,
@@ -271,6 +302,10 @@ impl MembershipService {
     }
 
     /// List members + last-active for the settings page.
+    ///
+    /// # Errors
+    /// Returns [`InviteError`] if the actor is not a member or the database
+    /// query fails.
     pub async fn list_members(
         &self,
         organization_id: Uuid,
@@ -292,6 +327,10 @@ impl MembershipService {
     }
 
     /// Update a member's role. Owner/admin only.
+    ///
+    /// # Errors
+    /// Returns [`InviteError`] if the actor lacks permission, demoting the last
+    /// owner is attempted, or the database query fails.
     pub async fn update_role(
         &self,
         organization_id: Uuid,
@@ -331,6 +370,10 @@ impl MembershipService {
     }
 
     /// Remove a member. Owner/admin only.
+    ///
+    /// # Errors
+    /// Returns [`InviteError`] if the actor lacks permission, the target is the
+    /// actor themselves, or the database query fails.
     pub async fn remove_member(
         &self,
         organization_id: Uuid,

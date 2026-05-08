@@ -80,6 +80,9 @@ impl BillingService {
     }
 
     /// Look up the org's current billing state.
+    ///
+    /// # Errors
+    /// Returns [`BillingError`] if the database query fails.
     pub async fn state(&self, organization_id: Uuid) -> Result<OrgBillingState, BillingError> {
         Ok(self.repo.get(organization_id).await?)
     }
@@ -87,6 +90,10 @@ impl BillingService {
     /// Start a Checkout Session for a paid plan. Persists the
     /// resulting `customer` id so future events can be attributed
     /// without another API round-trip.
+    ///
+    /// # Errors
+    /// Returns [`BillingError`] if the plan has no Stripe price, the Stripe API
+    /// call fails, or the database query fails.
     pub async fn start_checkout(
         &self,
         organization_id: Uuid,
@@ -126,6 +133,9 @@ impl BillingService {
 
     /// Persist a verified webhook delivery. Returns whether the event
     /// was newly written (false → duplicate retry).
+    ///
+    /// # Errors
+    /// Returns [`BillingError`] if the database query fails.
     pub async fn record_event(
         &self,
         stripe_event_id: &str,

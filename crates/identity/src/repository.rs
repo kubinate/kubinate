@@ -84,7 +84,7 @@ impl HetznerCredentialRepository for PgHetznerCredentialRepository {
         sqlx::query(&set_local_tenant(organization_id))
             .execute(&mut *tx)
             .await?;
-        audit.apply(&mut *tx).await?;
+        audit.apply(&mut tx).await?;
 
         let row = sqlx::query(
             r"
@@ -166,7 +166,7 @@ impl HetznerCredentialRepository for PgHetznerCredentialRepository {
         sqlx::query(&set_local_tenant(organization_id))
             .execute(&mut *tx)
             .await?;
-        audit.apply(&mut *tx).await?;
+        audit.apply(&mut tx).await?;
 
         let affected = sqlx::query(
             r"
@@ -193,6 +193,7 @@ fn set_local_tenant(organization_id: Uuid) -> String {
     format!("SET LOCAL app.current_tenant_id = '{organization_id}'")
 }
 
+#[allow(clippy::needless_pass_by_value)]
 fn row_to_credential(row: sqlx::postgres::PgRow) -> HetznerCredential {
     let organization_id: Uuid = row.get("organization_id");
     HetznerCredential {
@@ -374,7 +375,7 @@ impl MembershipRepository for PgMembershipRepository {
         sqlx::query(&set_local_tenant(organization_id))
             .execute(&mut *tx)
             .await?;
-        audit.apply(&mut *tx).await?;
+        audit.apply(&mut tx).await?;
         sqlx::query(
             "INSERT INTO memberships (id, organization_id, user_id, role)
              VALUES ($1, $2, $3, $4)
@@ -403,7 +404,7 @@ impl MembershipRepository for PgMembershipRepository {
         sqlx::query(&set_local_tenant(organization_id))
             .execute(&mut *tx)
             .await?;
-        audit.apply(&mut *tx).await?;
+        audit.apply(&mut tx).await?;
         let affected = sqlx::query(
             "UPDATE memberships SET role = $3
              WHERE organization_id = $1 AND user_id = $2 AND deleted_at IS NULL",
@@ -434,7 +435,7 @@ impl MembershipRepository for PgMembershipRepository {
         sqlx::query(&set_local_tenant(organization_id))
             .execute(&mut *tx)
             .await?;
-        audit.apply(&mut *tx).await?;
+        audit.apply(&mut tx).await?;
         sqlx::query(
             "UPDATE memberships SET deleted_at = now()
              WHERE organization_id = $1 AND user_id = $2 AND deleted_at IS NULL",
@@ -527,7 +528,7 @@ impl InviteRepository for PgInviteRepository {
         sqlx::query(&set_local_tenant(organization_id))
             .execute(&mut *tx)
             .await?;
-        audit.apply(&mut *tx).await?;
+        audit.apply(&mut tx).await?;
         let row: (
             Uuid,
             Uuid,
@@ -646,7 +647,7 @@ impl InviteRepository for PgInviteRepository {
         sqlx::query(&set_local_tenant(organization_id))
             .execute(&mut *tx)
             .await?;
-        audit.apply(&mut *tx).await?;
+        audit.apply(&mut tx).await?;
         let affected = sqlx::query(
             "UPDATE invites
              SET accepted_at = now(), accepted_by = $2
@@ -678,7 +679,7 @@ impl InviteRepository for PgInviteRepository {
         sqlx::query(&set_local_tenant(organization_id))
             .execute(&mut *tx)
             .await?;
-        audit.apply(&mut *tx).await?;
+        audit.apply(&mut tx).await?;
         sqlx::query(
             "UPDATE invites SET revoked_at = now()
              WHERE id = $1 AND revoked_at IS NULL AND accepted_at IS NULL",
@@ -765,7 +766,7 @@ pub trait PasskeyRepository: Send + Sync {
     /// renders them in the order they were registered).
     async fn list_live(&self, user_id: Uuid) -> Result<Vec<Passkey>, PlatformError>;
 
-    /// Look up a passkey by its WebAuthn credential id. Returns
+    /// Look up a passkey by its `WebAuthn` credential id. Returns
     /// `None` if no live passkey matches; the assertion ceremony's
     /// "unknown credential" branch.
     async fn find_by_credential_id(

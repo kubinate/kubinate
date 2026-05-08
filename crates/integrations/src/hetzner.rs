@@ -304,7 +304,7 @@ pub struct CreateServerParams {
 
 /// Trait boundary the provisioning workflow uses for Hetzner
 /// operations. A real HTTP implementation on top of [`Client`] lands
-/// alongside the feature-flagged integration test (ticket 03 DoD).
+/// alongside the feature-flagged integration test (ticket 03 `DoD`).
 #[async_trait]
 pub trait HetznerProvider: Send + Sync {
     /// Create a server. The returned [`ServerId`] may refer to a

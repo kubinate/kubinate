@@ -27,7 +27,7 @@ pub struct Session {
     /// no longer authenticates anything.
     pub revoked_at: Option<OffsetDateTime>,
     /// Sprint 4 ticket 05 — MFA gate. `true` means the session has
-    /// satisfied the WebAuthn assertion (or the user does not require
+    /// satisfied the `WebAuthn` assertion (or the user does not require
     /// MFA at all). `false` means partial: `/v1/me` is reachable but
     /// any Owner / Admin route is denied with `mfa_required`. Defaults
     /// to `true` for users without any MFA-requiring role; written
@@ -42,6 +42,9 @@ pub struct Session {
 pub const SESSION_TTL: Duration = Duration::days(30);
 
 /// Create a fresh session for a user.
+///
+/// # Errors
+/// Returns [`PlatformError`] if the database query fails.
 pub async fn issue(
     conn: &mut PgConnection,
     user_id: Uuid,
@@ -81,7 +84,7 @@ pub async fn issue(
     })
 }
 
-/// Issue a partial session that requires WebAuthn assertion before
+/// Issue a partial session that requires `WebAuthn` assertion before
 /// it can authorize Owner / Admin routes. Sprint 4 ticket 05 — used
 /// by the OAuth callback path when the resolved user holds an
 /// MFA-requiring role.
@@ -91,6 +94,9 @@ pub async fn issue(
 /// the `/v1/auth/passkey/*` endpoints, but no Owner / Admin route.
 /// Once the assertion ceremony succeeds, the assertion handler calls
 /// [`mark_mfa_satisfied`] to flip the row.
+///
+/// # Errors
+/// Returns [`PlatformError`] if the database query fails.
 pub async fn issue_partial_mfa(
     conn: &mut PgConnection,
     user_id: Uuid,
@@ -130,6 +136,9 @@ pub async fn issue_partial_mfa(
 /// Decide whether the OAuth callback should issue a partial session
 /// for `user_id`.
 ///
+/// # Errors
+/// Returns [`PlatformError`] if the database query fails.
+///
 /// Reads `users.requires_mfa AND users.mfa_enrolled`. The two
 /// columns are deliberately decoupled:
 ///
@@ -148,7 +157,7 @@ pub async fn issue_partial_mfa(
 /// challenge, and forcing the partial state would lock the user
 /// out of `/app/settings/security` (the only place they can
 /// enrol). Sprint 5 ticket 07's SPA `mfa_state` field surfaces
-/// "must_enrol" so the dashboard nudges the user; this helper
+/// "`must_enrol`" so the dashboard nudges the user; this helper
 /// stays the gate the OAuth callback consults.
 pub async fn user_requires_partial_session(
     pool: &PgPool,
@@ -159,13 +168,13 @@ pub async fn user_requires_partial_session(
             .bind(user_id)
             .fetch_optional(pool)
             .await?;
-    Ok(row.map_or(false, |(b,)| b))
+    Ok(row.is_some_and(|(b,)| b))
 }
 
 /// SPA-facing MFA state. The four values correspond to the matrix of
 /// `(users.requires_mfa, users.mfa_enrolled, sessions.mfa_satisfied)`:
 ///
-/// | requires_mfa | mfa_enrolled | session.mfa_satisfied | state |
+/// | `requires_mfa` | `mfa_enrolled` | `session.mfa_satisfied` | state |
 /// |---|---|---|---|
 /// | F | * | * | `NotRequired` |
 /// | T | F | * | `MustEnrol` |
@@ -173,8 +182,8 @@ pub async fn user_requires_partial_session(
 /// | T | T | T | `Enrolled` |
 ///
 /// Surfaced via `/v1/me` so the dashboard can route to
-/// `/app/settings/security` (must_enrol) or the assertion challenge
-/// (must_assert) without inferring state from a 401 round-trip.
+/// `/app/settings/security` (`must_enrol`) or the assertion challenge
+/// (`must_assert`) without inferring state from a 401 round-trip.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MfaState {
@@ -202,6 +211,9 @@ pub enum MfaState {
 /// for the session id (dev-header mode) is treated as
 /// `mfa_satisfied = false` for the same reason — dev-header mode
 /// has no real session, so `Enrolled` is not honestly representable.
+///
+/// # Errors
+/// Returns [`PlatformError`] if the database query fails.
 pub async fn mfa_state(
     pool: &PgPool,
     user_id: Uuid,
@@ -239,9 +251,12 @@ pub async fn mfa_state(
     })
 }
 
-/// Promote a partial-MFA session after a successful WebAuthn
+/// Promote a partial-MFA session after a successful `WebAuthn`
 /// assertion. Idempotent: re-running on an already-satisfied session
 /// is a no-op (returns `Ok(())`).
+///
+/// # Errors
+/// Returns [`PlatformError`] if the database query fails.
 pub async fn mark_mfa_satisfied(pool: &PgPool, id: Uuid) -> Result<(), PlatformError> {
     sqlx::query(
         r"
@@ -257,6 +272,9 @@ pub async fn mark_mfa_satisfied(pool: &PgPool, id: Uuid) -> Result<(), PlatformE
 }
 
 /// Revoke a session by id. Idempotent.
+///
+/// # Errors
+/// Returns [`PlatformError`] if the database query fails.
 pub async fn revoke(pool: &PgPool, id: Uuid) -> Result<(), PlatformError> {
     sqlx::query("UPDATE sessions SET revoked_at = now() WHERE id = $1 AND revoked_at IS NULL")
         .bind(id)
@@ -269,6 +287,9 @@ pub async fn revoke(pool: &PgPool, id: Uuid) -> Result<(), PlatformError> {
 ///
 /// Returns `Ok(None)` for unknown, expired, or revoked ids — the
 /// caller treats all three as "not authenticated" without branching.
+///
+/// # Errors
+/// Returns [`PlatformError`] if the database query fails.
 pub async fn resolve(pool: &PgPool, id: Uuid) -> Result<Option<Session>, PlatformError> {
     let row = sqlx::query_as::<
         _,

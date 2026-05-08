@@ -30,7 +30,7 @@ const ALPHABET: &[u8] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 /// bits of entropy per code. Plenty for one-shot use.
 const CODE_LEN: usize = 10;
 
-/// How many codes per batch. The `5-webauthn-for-owners.md` DoD
+/// How many codes per batch. The `5-webauthn-for-owners.md` `DoD`
 /// specifies 10; we follow the established pattern (GitHub /
 /// GitLab / Auth0 all default to 8–10).
 pub const BATCH_SIZE: usize = 10;

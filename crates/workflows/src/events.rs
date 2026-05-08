@@ -78,6 +78,10 @@ impl ClusterEventHub {
     /// Publish an event for a cluster. Cheap when no one is
     /// subscribed: the only cost is a `HashMap::get`. Returns the
     /// number of receivers that observed the event (0 if none).
+    ///
+    /// # Panics
+    /// Panics if the internal mutex is poisoned (only possible after a
+    /// previous thread panicked while holding the lock).
     pub fn publish(&self, cluster_id: Uuid, event: ClusterEvent) -> usize {
         let mut guard = self.inner.lock().expect("hub mutex poisoned");
         let Some(sender) = guard.get(&cluster_id) else {
@@ -87,12 +91,11 @@ impl ClusterEventHub {
         // entry so the next publish doesn't keep paying for a dead
         // sender. Subscribers come and go on every page navigation,
         // so this matters in practice.
-        match sender.send(event) {
-            Ok(n) => n,
-            Err(_) => {
-                guard.remove(&cluster_id);
-                0
-            }
+        if let Ok(n) = sender.send(event) {
+            n
+        } else {
+            guard.remove(&cluster_id);
+            0
         }
     }
 
@@ -100,6 +103,10 @@ impl ClusterEventHub {
     /// for a cluster id allocates the channel; subsequent ones share
     /// it. The receiver only sees events published *after* this
     /// call — initial state is fetched separately by the SSE handler.
+    ///
+    /// # Panics
+    /// Panics if the internal mutex is poisoned (only possible after a
+    /// previous thread panicked while holding the lock).
     pub fn subscribe(&self, cluster_id: Uuid) -> broadcast::Receiver<ClusterEvent> {
         let mut guard = self.inner.lock().expect("hub mutex poisoned");
         let sender = guard

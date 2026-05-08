@@ -4,7 +4,7 @@
 //!
 //! This crate proxies metric and log queries from user clusters,
 //! enforcing tenant scoping on every request. The choice of
-//! multi-tenant TSDB (Mimir vs VictoriaMetrics) is pending the
+//! multi-tenant TSDB (Mimir vs `VictoriaMetrics`) is pending the
 //! Phase 3 benchmark spike (brief §12).
 
 #![forbid(unsafe_code)]

@@ -2,10 +2,10 @@
 //!
 //! Handles the server-side parts that do not belong in the HTTP layer:
 //!   * generating and persisting `state` + `nonce` + PKCE `code_verifier`
-//!     before the browser leaves for the IdP,
+//!     before the browser leaves for the `IdP`,
 //!   * consuming them atomically on callback (single-use, 10-min TTL),
 //!   * upserting the `users` and `user_oidc_identities` rows from the
-//!     IdP's userinfo response.
+//!     `IdP`'s userinfo response.
 //!
 //! GitHub's OAuth 2.0 flow does not issue an `id_token`, so there is no
 //! signature / aud / nonce check against a JWT here. The `state` +
@@ -24,14 +24,14 @@ pub const AUTH_STATE_TTL: Duration = Duration::minutes(10);
 /// authorization request.
 #[derive(Debug, Clone)]
 pub struct AuthState {
-    /// The opaque anti-CSRF value echoed by the IdP. Also the PK.
+    /// The opaque anti-CSRF value echoed by the `IdP`. Also the PK.
     pub state: String,
     /// Nonce bound to this request (for future OIDC providers; unused
     /// with GitHub's OAuth 2.0 flow).
     pub nonce: String,
-    /// PKCE verifier; the code_challenge the IdP sees is its SHA-256.
+    /// PKCE verifier; the `code_challenge` the `IdP` sees is its SHA-256.
     pub code_verifier: String,
-    /// Which IdP this request was routed to.
+    /// Which `IdP` this request was routed to.
     pub provider: String,
     /// Where to send the browser after a successful login.
     pub redirect_to: Option<String>,
@@ -69,6 +69,9 @@ impl From<AuthStateError> for PlatformError {
 
 /// Persist a fresh authorization-request state. Caller is responsible
 /// for generating `state`, `nonce`, `code_verifier` (random, URL-safe).
+///
+/// # Errors
+/// Returns [`AuthStateError`] if the database query fails.
 pub async fn store(
     pool: &PgPool,
     state: &str,
@@ -101,6 +104,10 @@ pub async fn store(
 /// Atomically consume a state row. Succeeds exactly once per `state`;
 /// subsequent calls with the same value return [`AuthStateError::Replay`],
 /// and expired rows return [`AuthStateError::Expired`].
+///
+/// # Errors
+/// Returns [`AuthStateError`] if the state is not found, expired, already
+/// consumed, or the database query fails.
 pub async fn consume(pool: &PgPool, state: &str) -> Result<AuthState, AuthStateError> {
     // The UPDATE ... RETURNING idiom makes the check-and-consume a
     // single round-trip. `consumed_at IS NULL` ensures replays lose
@@ -162,18 +169,18 @@ async fn replay_or_missing(pool: &PgPool, state: &str) -> Result<AuthStateError,
     })
 }
 
-/// Identity information fetched from the IdP's userinfo endpoint, in
+/// Identity information fetched from the `IdP`'s userinfo endpoint, in
 /// the shape we persist.
 #[derive(Debug, Clone)]
 pub struct IdpUser {
     /// Stable IdP-issued subject id. For GitHub this is the numeric
     /// `id` field of the `/user` endpoint, serialized as text.
     pub subject: String,
-    /// IdP "issuer" discriminator. For GitHub we use the literal
+    /// `IdP` "issuer" discriminator. For GitHub we use the literal
     /// string `"github"` rather than a URL so link lookup does not
     /// depend on GitHub's evolving OIDC discovery status.
     pub issuer: String,
-    /// Preferred email address, if the IdP released one.
+    /// Preferred email address, if the `IdP` released one.
     pub email: Option<String>,
     /// Display name shown in the UI.
     pub display_name: String,
@@ -184,6 +191,9 @@ pub struct IdpUser {
 /// Upsert `users` + `user_oidc_identities` for an IdP-reported identity
 /// and return the resulting `user_id`. If the `(issuer, subject)` pair
 /// is already linked, the existing user is returned unchanged.
+///
+/// # Errors
+/// Returns [`PlatformError`] if the database query fails.
 pub async fn upsert_identity(
     conn: &mut PgConnection,
     idp: &IdpUser,
