@@ -212,3 +212,20 @@ defends in depth.
 - **v1** — Phase 2 exit (post-organizations, pre-RLS hardening).
 - **v2** — Phase 3 exit (post-Vault, post-observability-proxy).
 - **v3** — before external pen test at Phase 4.
+
+## v2 open requirements (tracked here, addressed at v2 cut)
+
+- **Secret-store boundary moves from pgcrypto to Vault.** Sprint 4
+  ticket 02 delivers the partial scope (`VaultStore` impl, parity
+  tests, Ansible role, runbook stub at
+  [`docs/runbooks/secrets-migration.md`](../runbooks/secrets-migration.md)).
+  Sprint 5+ delivers the live migration. v2 of this document
+  re-runs Flow 2's STRIDE table with Vault as the authoritative
+  store and the pgcrypto column retired; the KEK-in-env open gap
+  in Flow 2 closes at that point. Until v2 ships, Flow 2 still
+  reflects the pgcrypto reality. Cross-reference:
+  [ADR-0007](../adr/0007-secret-management.md) §Long term.
+- **Agent reverse-tunnel auth boundary.** Tracked separately under
+  [ADR-0014](../adr/0014-agent-reverse-tunnel-wire-format.md);
+  v2 of Flow 5 will replace the placeholder STRIDE entries with the
+  real mTLS handshake once the live cert-issuance path lands.
