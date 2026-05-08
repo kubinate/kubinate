@@ -24,7 +24,7 @@ use crate::{actor::Actor, audit_ctx, problem::ApiError, AppState};
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/", post(create).get(list))
-        .route("/:id", delete(remove))
+        .route("/{id}", delete(remove))
 }
 
 #[derive(Deserialize)]

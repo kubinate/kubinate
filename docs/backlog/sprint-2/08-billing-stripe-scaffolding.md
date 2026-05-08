@@ -42,8 +42,8 @@ flags, or paid-feature enforcement.
   from the Stripe customer id).
 - Stripe API client: `crates/integrations/src/stripe.rs` with the
   same trait/HTTP-impl pattern as Hetzner / GitHub.
-- Secrets: `KUBINATE_STRIPE_SECRET_KEY` (live test key),
-  `KUBINATE_STRIPE_WEBHOOK_SECRET`.
+- Secrets: `KUBINATE__STRIPE_SECRET_KEY` (live test key),
+  `KUBINATE__STRIPE_WEBHOOK_SECRET`.
 
 ## DoD
 

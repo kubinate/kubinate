@@ -3,7 +3,7 @@
 //! Order of precedence (lowest to highest):
 //! 1. Compiled-in defaults.
 //! 2. `config/default.toml`, `config/{env}.toml`.
-//! 3. Environment variables prefixed `KUBINATE_`.
+//! 3. Environment variables prefixed `KUBINATE__`.
 
 use serde::Deserialize;
 
@@ -31,12 +31,15 @@ impl AppConfig {
     /// Returns a configuration error if mandatory fields are missing
     /// or cannot be deserialized.
     pub fn load() -> Result<Self, config::ConfigError> {
-        let env = std::env::var("KUBINATE_ENV").unwrap_or_else(|_| "dev".to_string());
-        config::Config::builder()
+        let env = std::env::var("KUBINATE__ENV").unwrap_or_else(|_| "dev".to_string());
+
+        let config = config::Config::builder()
             .add_source(config::File::with_name("config/default").required(false))
             .add_source(config::File::with_name(&format!("config/{env}")).required(false))
             .add_source(config::Environment::with_prefix("KUBINATE").separator("__"))
             .build()?
-            .try_deserialize()
+            .try_deserialize()?;
+        
+        Ok(config)
     }
 }

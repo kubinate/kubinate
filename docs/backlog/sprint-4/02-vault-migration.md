@@ -13,7 +13,7 @@ cluster) as the authoritative secret store from Phase 3 onward.
 The Phase 0–2 implementation lives at
 [`crates/platform/src/secrets.rs`](../../../crates/platform/src/secrets.rs)
 behind a `SecretStore` trait + a `PgcryptoStore` impl that uses a
-single env-loaded `KUBINATE_KEK`. The trait is the seam this
+single env-loaded `KUBINATE__KEK`. The trait is the seam this
 ticket exploits — domain code stays unchanged; only the impl
 swaps.
 
@@ -51,8 +51,8 @@ Vault deploy:
   config). The role is **not** invoked from `site.yml` today
   (sprint 5+ adds the playbook entry). Molecule scenario lands
   alongside the live `site.yml` invocation in Sprint 5+.
-- [x in Sprint 4] `KUBINATE_SECRETS_BACKEND` env-var added with
-  default `pgcrypto`; CI's existing `KUBINATE_KEK` row stays.
+- [x in Sprint 4] `KUBINATE__SECRETS_BACKEND` env-var added with
+  default `pgcrypto`; CI's existing `KUBINATE__KEK` row stays.
 
 Deferred to Sprint 5+ (when the dogfood cluster exists):
 
@@ -76,16 +76,16 @@ somewhere to live as Sprint 5 fills it in).
   k3s PVC.
 - **Given** `crates/platform/src/secrets.rs` ships a `VaultStore`
   impl of the `SecretStore` trait, **when** the API is configured
-  with `KUBINATE_SECRETS_BACKEND=vault`, **then** every
+  with `KUBINATE__SECRETS_BACKEND=vault`, **then** every
   `SecretStore::store / get / delete` call routes through Vault's
   transit engine. The pgcrypto path stays compiled in (gated by
-  `KUBINATE_SECRETS_BACKEND=pgcrypto`) until the migration lands
+  `KUBINATE__SECRETS_BACKEND=pgcrypto`) until the migration lands
   in production.
 - **Given** the migration tool runs against an existing Phase-2
   database, **when** it completes, **then** every
   `hetzner_credentials.secret_ref` row + every
   `cluster_kubeconfigs` blob references a Vault path; the
-  `KUBINATE_KEK` env var can be removed; `pgcrypto` extension
+  `KUBINATE__KEK` env var can be removed; `pgcrypto` extension
   dropped (separate migration in a follow-up to keep the
   rollback story clean).
 - **Given** the Postgres connection, **when** the API requests a
@@ -109,7 +109,7 @@ somewhere to live as Sprint 5 fills it in).
   flags the row.
 - **Rollback story**: keep the pgcrypto column (don't drop it in
   the same sprint). The `SecretStore` trait dispatches to
-  whichever backend `KUBINATE_SECRETS_BACKEND` selects; an
+  whichever backend `KUBINATE__SECRETS_BACKEND` selects; an
   emergency rollback is one env-var flip + a redeploy. Drop the
   pgcrypto column in a separate sprint after a clean week.
 
@@ -121,7 +121,7 @@ Author `docs/runbooks/secrets-migration.md` covering:
   `secret/data/*`.
 - Steps: deploy the `vault` backend; run the migration binary
   with `--dry-run`; review the migration log; run for real;
-  flip `KUBINATE_SECRETS_BACKEND`.
+  flip `KUBINATE__SECRETS_BACKEND`.
 - Verification: every cluster's `kubeconfig` retrievable via
   the API on the new backend; no row in
   `hetzner_credentials.encrypted_token` non-null *and* no
@@ -147,9 +147,9 @@ Author `docs/runbooks/secrets-migration.md` covering:
       `pgcrypto retired` row is just an addition. The ADR's
       header gets a "Long-term plan implemented in Sprint 4
       ticket 02" footnote so future readers see the link.
-- [ ] `KUBINATE_KEK` removed from `.env.example` and from CI
-      env. CI's `KUBINATE_KEK=...` row drops, replaced by
-      `KUBINATE_SECRETS_BACKEND=pgcrypto` for the test path
+- [ ] `KUBINATE__KEK` removed from `.env.example` and from CI
+      env. CI's `KUBINATE__KEK=...` row drops, replaced by
+      `KUBINATE__SECRETS_BACKEND=pgcrypto` for the test path
       (no real Vault in CI).
 - [ ] Threat-model v2 row notes the secret-store boundary
       change (this is one of v2's open requirements per

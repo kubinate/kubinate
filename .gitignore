@@ -16,6 +16,11 @@ node_modules/
 .env.local
 .env.*.local
 
+# Local config overlays — copy config/dev.yml.example and fill in real secrets
+config/dev.yml
+config/staging.yml
+config/prod.yml
+
 # OS / editor junk
 .DS_Store
 Thumbs.db

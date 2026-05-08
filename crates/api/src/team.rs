@@ -35,11 +35,11 @@ pub fn org_routes() -> Router<AppState> {
     Router::new()
         .route("/members", get(list_members))
         .route(
-            "/members/:user_id",
+            "/members/{user_id}",
             patch(update_role).delete(remove_member),
         )
         .route("/invites", post(create_invite).get(list_invites))
-        .route("/invites/:id", delete(revoke_invite))
+        .route("/invites/{id}", delete(revoke_invite))
 }
 
 /// Mount at `/v1/invites/accept` — pre-membership endpoint, only the

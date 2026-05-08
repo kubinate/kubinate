@@ -47,14 +47,14 @@ operational arm landing.
   The pgcrypto blob column stays populated for the rollback
   window (separate sprint drops it).
 - **Given** every row is migrated, **when** the operator
-  flips `KUBINATE_SECRETS_BACKEND=vault` and the API rolls,
+  flips `KUBINATE__SECRETS_BACKEND=vault` and the API rolls,
   **then** every credential-touching endpoint reads from
   Vault and the `kubinate_secret_store_dispatch_total{backend="pgcrypto"}`
   series drains to 0 within the rollout deadline.
 - **Given** the production cutover completes, **when** the
-  operator inspects CI's env, **then** `KUBINATE_KEK` has
+  operator inspects CI's env, **then** `KUBINATE__KEK` has
   been dropped from `.github/workflows/ci.yml` and replaced
-  with `KUBINATE_SECRETS_BACKEND=pgcrypto` for the test path
+  with `KUBINATE__SECRETS_BACKEND=pgcrypto` for the test path
   (no real Vault in CI; tests still need a backend).
 
 ## Implementation notes
@@ -81,7 +81,7 @@ operational arm landing.
   reason. **Do not** halt on first failure — a single corrupt
   row should not block the rest of the migration.
 - **Dual-write window.** Between `--apply` completing and
-  `KUBINATE_SECRETS_BACKEND=vault` taking effect on every
+  `KUBINATE__SECRETS_BACKEND=vault` taking effect on every
   pod, new secret writes go to pgcrypto (the live backend)
   while reads can come from either (the trait dispatches by
   `algorithm` column). The runbook section names this window
@@ -116,7 +116,7 @@ numbers from the production cutover. Specifically:
       drain-down can be observed.
 - [ ] Production cutover executed; runbook empirical markers
       resolved.
-- [ ] `KUBINATE_KEK` removed from `.env.example` and CI; the
+- [ ] `KUBINATE__KEK` removed from `.env.example` and CI; the
       docker-compose dev path keeps it for offline dev.
 - [ ] ADR-0007 footnote at the head of the file (added in
       Sprint 4 #4) updated: "Long-term plan implemented in

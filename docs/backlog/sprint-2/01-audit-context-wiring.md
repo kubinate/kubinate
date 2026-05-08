@@ -25,7 +25,7 @@ transaction commits. Hetzner-credential downloads (ticket 04's
   is NULL but `request_id` is the workflow id and `user_agent` is a
   stable label like `runner/provision`.
 - **Given** the dev-header actor path
-  (`KUBINATE_ALLOW_HEADER_ACTOR=1`), **when** no `X-Actor-User-Id`
+  (`KUBINATE__ALLOW_HEADER_ACTOR=1`), **when** no `X-Actor-User-Id`
   header is present, **then** `actor_user_id` stays NULL — never the
   zero UUID.
 

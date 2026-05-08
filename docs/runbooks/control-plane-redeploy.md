@@ -111,7 +111,7 @@ Ordered by preference.
    of background-job behaviour. Restart with `systemctl start`.
 
 3. **Drop to maintenance mode** by re-rendering the api env file with
-   `KUBINATE_MAINTENANCE=1` (Sprint 3 follow-up — not yet wired).
+   `KUBINATE__MAINTENANCE=1` (Sprint 3 follow-up — not yet wired).
 
 ## When the playbook drifts
 

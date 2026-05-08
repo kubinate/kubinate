@@ -29,7 +29,7 @@ cargo test -p <crate>               # single crate
 cargo test -p <crate> <test_name>   # single test
 ```
 
-Env vars use the `KUBINATE_` prefix with `__` as the nesting separator (e.g. `KUBINATE_DATABASE_URL`). Config layering: compiled defaults → `config/default.toml` → `config/{KUBINATE_ENV}.toml` → env vars. See `crates/platform/src/config.rs`.
+Env vars use the `KUBINATE__` prefix with `__` as the nesting separator (e.g. `KUBINATE__DATABASE_URL`). Config layering: compiled defaults → `config/default.toml` → `config/{KUBINATE__ENV}.toml` → env vars. See `crates/platform/src/config.rs`.
 
 ### Frontend (`frontend/`, SvelteKit 2 + Svelte 5 + Vite, Node 22+)
 

@@ -56,9 +56,9 @@ jobs:
     env:
       DATABASE_URL: postgres://kubinate:kubinate@localhost:5432/kubinate
       # `#[sqlx::test]` reads DATABASE_URL to clone per-test template
-      # DBs. KUBINATE_KEK is consumed by `PgcryptoStore::from_env` —
+      # DBs. KUBINATE__KEK is consumed by `PgcryptoStore::from_env` —
       # tests that build a store explicitly with `fresh_kek()` ignore it.
-      KUBINATE_KEK: aQABAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4f
+      KUBINATE__KEK: aQABAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4f
       RUST_LOG: warn
 
     steps:

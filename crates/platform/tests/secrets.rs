@@ -250,7 +250,7 @@ async fn vault_rejects_pgcrypto_rows(pool: PgPool) {
     // `algorithm = pgp_sym_v1` cannot be decrypted by `VaultStore`,
     // and a row written under `vault_transit_v1` cannot be decrypted
     // by `PgcryptoStore`. This is what stops a deploy that flips
-    // `KUBINATE_SECRETS_BACKEND` mid-flight from silently returning
+    // `KUBINATE__SECRETS_BACKEND` mid-flight from silently returning
     // wrong-shape data; the failure mode is loud (Decrypt error)
     // rather than subtle (returns wrong bytes).
     let org_id = Uuid::now_v7();

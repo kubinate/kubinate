@@ -21,7 +21,7 @@ When Sprint 5+ stands up the dogfood cluster:
    idempotent.
 4. Run the migration binary (Sprint 5+ ticket — see partial scope)
    to re-key existing pgcrypto-encrypted secrets.
-5. Flip `KUBINATE_SECRETS_BACKEND=vault` in
+5. Flip `KUBINATE__SECRETS_BACKEND=vault` in
    `roles/kubinate_api/templates/api.env.j2`.
 
 ## What this role does

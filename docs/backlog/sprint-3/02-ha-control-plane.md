@@ -13,7 +13,7 @@ so we can validate against alpha tenants before defaulting to it.
 
 ## Acceptance criteria — Same-region 3-CP path
 
-- **Given** an org with `KUBINATE_FEATURE_HA_CP=1` set in their
+- **Given** an org with `KUBINATE__FEATURE_HA_CP=1` set in their
   organization metadata (Sprint 3 introduces a `feature_flags` JSONB
   column), **when** they POST a cluster create with
   `control_plane_count: 3`, **then**:

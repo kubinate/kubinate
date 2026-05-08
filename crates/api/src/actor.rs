@@ -4,7 +4,7 @@
 //! The active organization is taken from the `X-Organization-Id`
 //! header and validated against the user's memberships.
 //!
-//! Dev path (gated by `KUBINATE_ALLOW_HEADER_ACTOR=1`): the
+//! Dev path (gated by `KUBINATE__ALLOW_HEADER_ACTOR=1`): the
 //! `X-Organization-Id` header alone is accepted and stands in for a
 //! logged-in user. This exists so tests and pre-OIDC smoke flows can
 //! exercise tenant-scoped endpoints without a real login.
@@ -67,7 +67,7 @@ where
         }
 
         // 2. Dev header fallback.
-        if std::env::var("KUBINATE_ALLOW_HEADER_ACTOR").ok().as_deref() == Some("1") {
+        if std::env::var("KUBINATE__ALLOW_HEADER_ACTOR").ok().as_deref() == Some("1") {
             let org_id = parts
                 .headers
                 .get("x-organization-id")
@@ -207,7 +207,7 @@ where
             }
         }
 
-        if std::env::var("KUBINATE_ALLOW_HEADER_ACTOR").ok().as_deref() == Some("1") {
+        if std::env::var("KUBINATE__ALLOW_HEADER_ACTOR").ok().as_deref() == Some("1") {
             let user_id = parts
                 .headers
                 .get("x-actor-user-id")

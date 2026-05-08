@@ -42,7 +42,7 @@ prod. But the tests can't prove it without a role split.
       `kubinate_app`.
 - [ ] The application `db::pool` opens connections as
       `kubinate_app`, not as the bootstrap user. Configurable via
-      `KUBINATE_DATABASE_URL`'s username field; the bootstrap
+      `KUBINATE__DATABASE_URL`'s username field; the bootstrap
       user only runs migrations.
 - [ ] The two `#[ignore]`'d tests in
       `crates/platform/tests/secrets.rs` are un-ignored and pass
@@ -77,7 +77,7 @@ prod. But the tests can't prove it without a role split.
 - [ ] Migration shipped + CI Postgres bootstrap creates the role.
 - [ ] `#[ignore]` removed from the two RLS tests; both pass.
 - [ ] One new positive `current_user` assertion test.
-- [ ] Production `KUBINATE_DATABASE_URL` example in
+- [ ] Production `KUBINATE__DATABASE_URL` example in
       `.env.example` updated to point at `kubinate_app`, not
       `kubinate`.
 - [ ] No regression on the existing 63+ workspace tests.

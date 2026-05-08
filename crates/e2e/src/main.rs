@@ -7,16 +7,16 @@
 //!
 //! Required environment:
 //!   DATABASE_URL                 — Postgres for app + audit + state
-//!   KUBINATE_KEK                 — base64 32-byte envelope-encryption key
-//!   KUBINATE_TEST_HETZNER_TOKEN  — Hetzner Cloud token for the test project
-//!   KUBINATE_HETZNER_SSH_KEY     — name (or id) of an SSH key already
+//!   KUBINATE__KEK                 — base64 32-byte envelope-encryption key
+//!   KUBINATE__TEST_HETZNER_TOKEN  — Hetzner Cloud token for the test project
+//!   KUBINATE__HETZNER_SSH_KEY     — name (or id) of an SSH key already
 //!                                  registered in the test project
-//!   KUBINATE_SSH_KEY_PATH        — local path to the matching private key
+//!   KUBINATE__SSH_KEY_PATH        — local path to the matching private key
 //!
 //! Optional:
-//!   KUBINATE_E2E_REGION          — default "nbg1"
-//!   KUBINATE_E2E_SERVER_TYPE     — default "cpx21"
-//!   KUBINATE_E2E_K3S_VERSION     — default "v1.30.2+k3s1"
+//!   KUBINATE__E2E_REGION          — default "nbg1"
+//!   KUBINATE__E2E_SERVER_TYPE     — default "cpx21"
+//!   KUBINATE__E2E_K3S_VERSION     — default "v1.30.2+k3s1"
 
 #![forbid(unsafe_code)]
 
@@ -296,13 +296,13 @@ impl HarnessArgs {
     fn from_env() -> Result<Self> {
         Ok(Self {
             database_url: env_required("DATABASE_URL")?,
-            hetzner_token: env_required("KUBINATE_TEST_HETZNER_TOKEN")?,
-            hetzner_ssh_key: env_required("KUBINATE_HETZNER_SSH_KEY")?,
-            ssh_key_path: PathBuf::from(env_required("KUBINATE_SSH_KEY_PATH")?),
-            region: std::env::var("KUBINATE_E2E_REGION").unwrap_or_else(|_| "nbg1".into()),
-            server_type: std::env::var("KUBINATE_E2E_SERVER_TYPE")
+            hetzner_token: env_required("KUBINATE__TEST_HETZNER_TOKEN")?,
+            hetzner_ssh_key: env_required("KUBINATE__HETZNER_SSH_KEY")?,
+            ssh_key_path: PathBuf::from(env_required("KUBINATE__SSH_KEY_PATH")?),
+            region: std::env::var("KUBINATE__E2E_REGION").unwrap_or_else(|_| "nbg1".into()),
+            server_type: std::env::var("KUBINATE__E2E_SERVER_TYPE")
                 .unwrap_or_else(|_| "cpx21".into()),
-            k3s_version: std::env::var("KUBINATE_E2E_K3S_VERSION")
+            k3s_version: std::env::var("KUBINATE__E2E_K3S_VERSION")
                 .unwrap_or_else(|_| "v1.30.2+k3s1".into()),
         })
     }

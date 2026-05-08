@@ -128,7 +128,7 @@ facts about the artifacts and ecosystem we're entering.
   Ingress controller. Cloudflare Tunnel survives either way
   (ADR-0004 commitment), so this is a packaging choice not a
   vendor choice.
-- **Secrets.** Today `KUBINATE_KEK` rides in
+- **Secrets.** Today `KUBINATE__KEK` rides in
   `infra/ansible/group_vars/all/vault.yml` (Ansible Vault, not
   HashiCorp Vault). Post-migration the env var still exists
   but is sourced from a k8s Secret (or, after Sprint 4 ticket
@@ -262,7 +262,7 @@ running the same workflow" is the same forcing function.
 - **Memory under one in-flight provision**: <<measurement
   needed>>
 - **OTLP collector reachable from the API pod** (the
-  `KUBINATE_OTLP_ENDPOINT` env var stays the same; what
+  `KUBINATE__OTLP_ENDPOINT` env var stays the same; what
   changes is whether a Tempo/Jaeger backend is reachable on
   the cluster network): <<measurement needed>>
 

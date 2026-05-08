@@ -18,7 +18,7 @@
 //! 1. **Auth.** Sprint 4 ships the proto + the handler; the mTLS
 //!    PKI that authenticates clients waits for Sprint 5+ Vault
 //!    integration. A separate-port listener that defaults to **off**
-//!    via `KUBINATE_AGENT_TUNNEL_ENABLED` keeps the unauth surface
+//!    via `KUBINATE__AGENT_TUNNEL_ENABLED` keeps the unauth surface
 //!    explicitly opt-in.
 //! 2. **Protocol cleanliness.** gRPC routes through paths like
 //!    `/kubinate.agent.v1.AgentService/OpenStream`, not REST-shaped
@@ -42,7 +42,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use tonic::{transport::Server, Request, Response, Status, Streaming};
 
 /// Default bind address when the agent tunnel is enabled but no
-/// explicit `KUBINATE_AGENT_TUNNEL_ADDR` is set. Localhost-only so
+/// explicit `KUBINATE__AGENT_TUNNEL_ADDR` is set. Localhost-only so
 /// an operator who flips the feature flag without picking an
 /// address doesn't accidentally open a public port.
 const DEFAULT_AGENT_BIND_ADDR: &str = "127.0.0.1:8081";
@@ -155,9 +155,9 @@ pub enum ListenerDecision {
 /// from Rust 1.80 onward and races other tests in the same
 /// binary).
 ///
-/// `enabled` is the raw value of `KUBINATE_AGENT_TUNNEL_ENABLED`
+/// `enabled` is the raw value of `KUBINATE__AGENT_TUNNEL_ENABLED`
 /// (must equal `"1"` exactly to enable); `addr_override` is the
-/// raw value of `KUBINATE_AGENT_TUNNEL_ADDR` (defaults to
+/// raw value of `KUBINATE__AGENT_TUNNEL_ADDR` (defaults to
 /// [`DEFAULT_AGENT_BIND_ADDR`] when `None`).
 #[must_use]
 pub fn decide_listener(enabled: Option<&str>, addr_override: Option<&str>) -> ListenerDecision {
@@ -181,9 +181,9 @@ pub fn decide_listener(enabled: Option<&str>, addr_override: Option<&str>) -> Li
 /// Decide whether to start the gRPC listener at process startup.
 ///
 /// Reads two env vars:
-/// - `KUBINATE_AGENT_TUNNEL_ENABLED` — must equal `"1"` to enable.
+/// - `KUBINATE__AGENT_TUNNEL_ENABLED` — must equal `"1"` to enable.
 ///   Any other value (including unset) keeps the listener off.
-/// - `KUBINATE_AGENT_TUNNEL_ADDR` — bind address. Defaults to
+/// - `KUBINATE__AGENT_TUNNEL_ADDR` — bind address. Defaults to
 ///   [`DEFAULT_AGENT_BIND_ADDR`] (localhost-only) when unset.
 ///
 /// Spawns the server on a fresh tokio task and returns immediately;
@@ -197,12 +197,12 @@ pub fn decide_listener(enabled: Option<&str>, addr_override: Option<&str>) -> Li
 /// from accidentally publishing the port. Sprint 5+ adds mTLS and
 /// flips the loopback restriction to "if no tls configured."
 pub fn spawn_if_enabled() {
-    let enabled_owned = std::env::var("KUBINATE_AGENT_TUNNEL_ENABLED").ok();
-    let addr_owned = std::env::var("KUBINATE_AGENT_TUNNEL_ADDR").ok();
+    let enabled_owned = std::env::var("KUBINATE__AGENT_TUNNEL_ENABLED").ok();
+    let addr_owned = std::env::var("KUBINATE__AGENT_TUNNEL_ADDR").ok();
     let addr = match decide_listener(enabled_owned.as_deref(), addr_owned.as_deref()) {
         ListenerDecision::Disabled => {
             tracing::info!(
-                "agent tunnel listener disabled (set KUBINATE_AGENT_TUNNEL_ENABLED=1 to enable; \
+                "agent tunnel listener disabled (set KUBINATE__AGENT_TUNNEL_ENABLED=1 to enable; \
                  unauthenticated in Sprint 4 — Sprint 5+ adds mTLS)"
             );
             return;
@@ -210,7 +210,7 @@ pub fn spawn_if_enabled() {
         ListenerDecision::InvalidAddr(reason) => {
             tracing::error!(
                 error = %reason,
-                "KUBINATE_AGENT_TUNNEL_ADDR invalid; listener will not start"
+                "KUBINATE__AGENT_TUNNEL_ADDR invalid; listener will not start"
             );
             return;
         }
@@ -218,7 +218,7 @@ pub fn spawn_if_enabled() {
             tracing::error!(
                 %addr,
                 "refusing non-loopback bind while agent tunnel is unauthenticated \
-                 (Sprint 5+ mTLS not yet wired); set KUBINATE_AGENT_TUNNEL_ADDR \
+                 (Sprint 5+ mTLS not yet wired); set KUBINATE__AGENT_TUNNEL_ADDR \
                  to a 127.0.0.1 / ::1 address"
             );
             return;

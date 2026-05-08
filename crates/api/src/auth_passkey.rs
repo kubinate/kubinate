@@ -20,8 +20,8 @@
 //! a separate review pass. For now: registering a passkey is opt-in
 //! per user; the OAuth callback still issues full sessions.
 //!
-//! `WebAuthn` opt-in: if `KUBINATE_WEBAUTHN_RP_ID` /
-//! `KUBINATE_WEBAUTHN_RP_ORIGIN` aren't set, every handler returns
+//! `WebAuthn` opt-in: if `KUBINATE__WEBAUTHN_RP_ID` /
+//! `KUBINATE__WEBAUTHN_RP_ORIGIN` aren't set, every handler returns
 //! 503 with a Problem Details body. The rest of the API works
 //! unchanged. This keeps existing dev / prod deploys functional
 //! while operators roll out the `WebAuthn` config.
@@ -58,7 +58,7 @@ pub fn routes() -> Router<AppState> {
         .route("/assert/start", post(assert_start))
         .route("/assert/finish", post(assert_finish))
         .route("/list", get(list))
-        .route("/:id", delete(revoke))
+        .route("/{id}", delete(revoke))
 }
 
 /// Mount the recovery-code routes (peer to passkey routes; same
@@ -391,7 +391,7 @@ async fn revoke(
 fn require_ceremonies(state: &AppState) -> Result<Arc<Ceremonies>, ApiError> {
     state.ceremonies.clone().ok_or_else(|| {
         ApiError::from(PlatformError::Internal(anyhow::anyhow!(
-            "WebAuthn is not configured on this deployment (KUBINATE_WEBAUTHN_RP_ID + KUBINATE_WEBAUTHN_RP_ORIGIN)"
+            "WebAuthn is not configured on this deployment (KUBINATE__WEBAUTHN_RP_ID + KUBINATE__WEBAUTHN_RP_ORIGIN)"
         )))
     })
 }
