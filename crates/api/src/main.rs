@@ -131,10 +131,32 @@ async fn main() -> anyhow::Result<()> {
 
     tracing::info!(env = %config.environment, "starting kubinate-api");
 
+    // Sprint 4 ticket 07 — Postgres role split. Migrations run as
+    // the bootstrap user (which retains DDL + role-management
+    // privileges); the runtime pool connects as the non-superuser
+    // `kubinate_app` role so RLS on tenant-scoped tables actually
+    // applies (Postgres superusers bypass RLS even with `FORCE ROW
+    // LEVEL SECURITY`).
+    //
+    // Backwards-compatible default: when `KUBINATE_DATABASE_MIGRATION_URL`
+    // is unset, fall back to the runtime URL — that's the dev /
+    // legacy shape where the same role does both. Production +
+    // CI set the var explicitly.
+    let migration_url = std::env::var("KUBINATE_DATABASE_MIGRATION_URL")
+        .unwrap_or_else(|_| config.database_url.clone());
+    {
+        let migration_pool = db::pool(&migration_url, 4)
+            .await
+            .context("migration pool")?;
+        db::migrate(&migration_pool).await.context("migrations")?;
+        // Drop the migration pool before opening the runtime pool so
+        // the bootstrap user's connection slots are returned to the
+        // server. The runtime pool owns its own slots.
+        migration_pool.close().await;
+    }
     let pool = db::pool(&config.database_url, 20)
         .await
         .context("database pool")?;
-    db::migrate(&pool).await.context("migrations")?;
 
     // Sprint 4 ticket 02 — backend switch. Default `pgcrypto` keeps
     // every existing deploy unchanged. `vault` requires the

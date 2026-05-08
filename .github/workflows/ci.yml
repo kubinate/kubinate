@@ -82,6 +82,28 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
 
+      - name: Bootstrap kubinate_app role
+        # Sprint 4 ticket 07 — RLS isolation tests need a non-
+        # superuser role to actually exercise RLS. The
+        # `services.postgres` workflow service can't run init
+        # scripts directly, so do it via psql after the healthcheck
+        # confirms postgres is ready.
+        env:
+          PGPASSWORD: kubinate
+        run: |
+          psql -h localhost -U kubinate -d kubinate -v ON_ERROR_STOP=1 <<'EOSQL'
+          DO $$
+          BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'kubinate_app') THEN
+              CREATE ROLE kubinate_app
+                LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION INHERIT
+                PASSWORD 'kubinate';
+            END IF;
+          END
+          $$;
+          GRANT CONNECT ON DATABASE kubinate TO kubinate_app;
+          EOSQL
+
       - name: cargo fmt --check
         run: cargo fmt --all --check
 
