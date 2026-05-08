@@ -1,0 +1,33 @@
+[package]
+name = "kubinate-workflows"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Temporal workflow and activity definitions (see ADR-0003)."
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+kubinate-platform = { path = "../platform" }
+kubinate-integrations = { path = "../integrations" }
+kubinate-cluster = { path = "../cluster" }
+kubinate-addons = { path = "../addons" }
+secrecy.workspace = true
+tokio.workspace = true
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
+tracing.workspace = true
+metrics.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+uuid.workspace = true
+time.workspace = true
+rand.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "macros"] }
+

@@ -1,0 +1,123 @@
+// Sprint 4 ticket 03 — agent reverse-tunnel service definitions.
+//
+// Wire shape: a single bidirectional streaming RPC. The agent dials
+// the control plane, presents its mTLS client cert, and opens a
+// stream. From that point both sides multiplex messages over the
+// stream:
+//
+//   agent  --[ AgentToServer ]-->  control plane
+//   agent <--[ ServerToAgent ]--   control plane
+//
+// This satisfies the inbound-only invariant (CLAUDE.md): the agent
+// is always the dialer; the control plane never opens a TCP/TLS
+// connection toward a customer cluster's network.
+//
+// The Sprint-4 partial scope ships the proto + an in-process
+// loopback test only — mTLS, real cert PKI, and the production
+// agent-binary deploy land in Sprint 5+ once Vault PKI is wired.
+
+syntax = "proto3";
+
+package kubinate.agent.v1;
+
+// Top-level bidirectional stream. Each side may send a message at
+// any time; ordering is strictly per-direction (HTTP/2 stream
+// guarantees), but cross-direction ordering is not synchronised.
+//
+// RPC name `OpenStream` (rather than `Connect`) avoids the
+// collision with tonic's auto-generated client builder
+// `Client::connect(uri)` constructor.
+service AgentService {
+  rpc OpenStream(stream AgentToServer) returns (stream ServerToAgent);
+}
+
+// One message from the agent to the control plane. `oneof` keeps
+// the wire compact + makes the server-side dispatch a single match.
+message AgentToServer {
+  oneof payload {
+    Heartbeat heartbeat = 1;
+    MetricsRemoteWrite metrics = 2;
+    AssertionResult assertion = 3;
+  }
+}
+
+// One message from the control plane to the agent. Today the
+// server only sends acks + the occasional command; the variants
+// stay minimal until concrete need arises.
+message ServerToAgent {
+  oneof payload {
+    HeartbeatAck heartbeat_ack = 1;
+    Command command = 2;
+  }
+}
+
+// Periodic liveness ping. The control plane stamps its arrival in
+// the `agent_last_seen_at` row; missing > 90s fires the runbook
+// alert at `docs/runbooks/agent-heartbeat-missing.md`.
+message Heartbeat {
+  // Cluster id this agent belongs to. Used by the server to route
+  // commands + scope the heartbeat. Matches `clusters.id`.
+  string cluster_id = 1;
+  // Build version of the kubinate-agent binary. Logged so an
+  // operator can correlate a stuck agent with a known-bad release.
+  string agent_version = 2;
+  // k3s version reported by the local kubelet. Phase 3+ uses this
+  // for the addon-compatibility matrix.
+  string k3s_version = 3;
+  // Unix milliseconds from the agent's local clock. Server clock
+  // drift is logged as a warning when it exceeds 30s.
+  int64 sent_at_ms = 4;
+}
+
+message HeartbeatAck {
+  // Server-stamped wall clock for round-trip timing.
+  int64 received_at_ms = 1;
+}
+
+// Prometheus remote-write payload, serialized verbatim as the
+// standard protobuf bytes. The control plane proxies these to the
+// configured TSDB (VictoriaMetrics in the default rec — see
+// `docs/decisions/sprint-3-observability-tsdb.md`).
+//
+// Why ship the bytes inline rather than re-mapping into
+// service-specific types: the prometheus-spec wire format is the
+// stable contract; re-defining it here would diverge the moment
+// upstream adds a new field.
+message MetricsRemoteWrite {
+  // Tenant the samples belong to. Cross-checked against the
+  // agent's authenticated cluster_id → organization_id mapping;
+  // a body claiming a different tenant is rejected with
+  // `tenant_mismatch` (mirrors the same guard the JSON observability
+  // proxy already enforces).
+  string organization_id = 1;
+  // Standard Prometheus remote-write `WriteRequest` protobuf
+  // bytes. Server hands these to the TSDB unchanged.
+  bytes write_request = 2;
+}
+
+// Result of a WebAuthn assertion ceremony forwarded over the
+// agent tunnel. The Phase 3+ flow lets a customer's in-cluster
+// kubectl shell prove identity without round-tripping the user
+// through the dashboard. Wire shape carried so the proto stays
+// stable when that feature lands; today the server-side handler
+// is unimplemented.
+message AssertionResult {
+  string ceremony_id = 1;
+  bytes credential = 2;
+}
+
+// Out-of-band command from the control plane. Today the only
+// command is a graceful agent restart (used for cert rotation in
+// Sprint 5+). Empty oneof so adding a new variant doesn't break
+// older agent binaries — agents skip unknown variants.
+message Command {
+  oneof kind {
+    GracefulRestart graceful_restart = 1;
+  }
+}
+
+message GracefulRestart {
+  // Maximum drain time before the agent SIGKILLs itself. Default
+  // 30s on the server side.
+  int64 grace_seconds = 1;
+}

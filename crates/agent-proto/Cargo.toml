@@ -1,0 +1,25 @@
+[package]
+name = "kubinate-agent-proto"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Shared gRPC service definitions for the kubinate-agent reverse tunnel (Sprint 4 ticket 03)."
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+tonic.workspace = true
+prost.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "macros"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
+async-trait.workspace = true
+futures.workspace = true
+tower = "0.5"
+hyper-util = { version = "0.1", features = ["tokio"] }
+
+[build-dependencies]
+tonic-build.workspace = true
