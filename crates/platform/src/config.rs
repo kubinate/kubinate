@@ -39,7 +39,7 @@ impl AppConfig {
             .add_source(config::Environment::with_prefix("KUBINATE").separator("__"))
             .build()?
             .try_deserialize()?;
-        
+
         Ok(config)
     }
 }

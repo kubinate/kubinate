@@ -67,7 +67,11 @@ where
         }
 
         // 2. Dev header fallback.
-        if std::env::var("KUBINATE__ALLOW_HEADER_ACTOR").ok().as_deref() == Some("1") {
+        if std::env::var("KUBINATE__ALLOW_HEADER_ACTOR")
+            .ok()
+            .as_deref()
+            == Some("1")
+        {
             let org_id = parts
                 .headers
                 .get("x-organization-id")
@@ -207,7 +211,11 @@ where
             }
         }
 
-        if std::env::var("KUBINATE__ALLOW_HEADER_ACTOR").ok().as_deref() == Some("1") {
+        if std::env::var("KUBINATE__ALLOW_HEADER_ACTOR")
+            .ok()
+            .as_deref()
+            == Some("1")
+        {
             let user_id = parts
                 .headers
                 .get("x-actor-user-id")

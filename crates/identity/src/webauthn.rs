@@ -142,8 +142,9 @@ impl WebauthnConfig {
         }
         let rp_name =
             std::env::var("KUBINATE__WEBAUTHN_RP_NAME").unwrap_or_else(|_| "Kubinate".to_string());
-        let origin_str = std::env::var("KUBINATE__WEBAUTHN_RP_ORIGIN")
-            .map_err(|_| WebauthnError::Config("KUBINATE__WEBAUTHN_RP_ORIGIN is required".into()))?;
+        let origin_str = std::env::var("KUBINATE__WEBAUTHN_RP_ORIGIN").map_err(|_| {
+            WebauthnError::Config("KUBINATE__WEBAUTHN_RP_ORIGIN is required".into())
+        })?;
         let rp_origin = Url::parse(&origin_str).map_err(|e| {
             WebauthnError::Config(format!("KUBINATE__WEBAUTHN_RP_ORIGIN invalid url: {e}"))
         })?;
