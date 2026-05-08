@@ -52,3 +52,4 @@ style, variable naming) do not need ADRs.
 | 0011 | Defer the Temporal SDK adoption to Phase 3            | Accepted |
 | 0012 | Defer HA control-plane delivery to Phase 4+           | Accepted |
 | 0013 | WebAuthn device-lifecycle decisions                   | Accepted |
+| 0014 | Agent reverse-tunnel wire format                      | Proposed |

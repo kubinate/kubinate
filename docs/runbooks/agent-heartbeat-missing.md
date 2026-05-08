@@ -121,5 +121,11 @@ Required for SEV-2 only.
 ## Related
 
 - ADR-0009 / ADR-0010: Auth and authorization (mTLS cert lifecycle).
+- ADR-0014: agent reverse-tunnel wire format. The
+  `cert_serial` and `cluster_id` fields named in the diagnosis
+  section above are stamped onto the disconnect `tracing` event by
+  the connection-lifecycle instrumentation in
+  `crates/api/src/agent.rs`; ADR-0014 is the contract that those
+  field names exist.
 - Threat model, Flow 5.
 - Agent egress allowlist docs.
