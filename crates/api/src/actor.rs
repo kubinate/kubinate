@@ -257,11 +257,10 @@ where
 /// at the route the granularity matters for.
 ///
 /// `dead_code` allowed because the extractor is intentionally
-/// unused at this commit — handler migrations to `OwnerActor`
-/// land in a follow-up gated on `security`-role review per
-/// CONTRIBUTING.md. Removing the struct would just round-trip
-/// the same surface in a later commit.
-#[allow(dead_code)]
+/// First in-tree consumer is `clusters::destroy` — adopted in
+/// Sprint 4 ticket 05's route-migration pass. Subsequent
+/// Owner/Admin routes are migrated per-PR with `security`-role
+/// review per CONTRIBUTING.md.
 #[derive(Debug, Clone, Copy)]
 pub struct OwnerActor {
     /// The wrapped [`Actor`]. Same shape — `OwnerActor` exists
@@ -270,7 +269,11 @@ pub struct OwnerActor {
     pub inner: Actor,
     /// Resolved role for this user in the active organization.
     /// Always `Owner` or `Admin` — the extractor rejects everything
-    /// else.
+    /// else. Handlers that want to differentiate between the two
+    /// (e.g. an Admin-can-do-X-but-not-Y policy) read this; the
+    /// destroy handler does not, hence the lint allow at the field
+    /// level.
+    #[allow(dead_code)]
     pub role: kubinate_identity::model::MembershipRole,
 }
 

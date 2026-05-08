@@ -36,7 +36,12 @@ use time::{Duration, OffsetDateTime};
 use tokio_stream::{wrappers::BroadcastStream, StreamExt};
 use uuid::Uuid;
 
-use crate::{actor::Actor, audit_ctx, problem::ApiError, AppState};
+use crate::{
+    actor::{Actor, OwnerActor},
+    audit_ctx,
+    problem::ApiError,
+    AppState,
+};
 
 const IDEMPOTENCY_HEADER: &str = "idempotency-key";
 const IDEMPOTENCY_TTL: Duration = Duration::hours(24);
@@ -281,11 +286,29 @@ async fn list(
 
 /// `DELETE /v1/clusters/:id` — initiate destroy. Returns 202; the
 /// runner runs the workflow asynchronously.
+///
+/// Sprint 4 ticket 05 — first route migrated to [`OwnerActor`]. The
+/// extractor enforces two gates **before** the handler runs:
+///
+/// 1. **MFA gate.** A partial-MFA session (`mfa_satisfied = false`)
+///    is rejected with HTTP 401 and Problem Details
+///    `code = mfa_required`; the SPA's `_problem.ts` discriminator
+///    catches it and routes to the WebAuthn challenge page.
+/// 2. **Role gate.** A live membership in the active organization
+///    must be Owner or Admin. Member / Developer / Viewer roles get
+///    HTTP 403.
+///
+/// We pick destroy as the proof-of-concept route because it has the
+/// largest blast radius of any existing handler — once submitted,
+/// the workflow cannot be undone, and the Hetzner servers do incur
+/// cost while running. A bypassed MFA gate on this route is the
+/// concrete impact the gate is designed to prevent.
 async fn destroy(
     State(state): State<AppState>,
-    actor: Actor,
+    owner: OwnerActor,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, ApiError> {
+    let actor = owner.inner;
     let cluster = state.cluster_service.get(actor.organization_id, id).await?;
     let credential = state
         .hetzner_service
