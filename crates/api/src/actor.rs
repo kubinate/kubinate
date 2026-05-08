@@ -25,6 +25,7 @@ pub const SESSION_COOKIE: &str = "kubinate_session";
 /// so downstream handlers (which are tenant-scoped) do not have to
 /// re-derive it.
 #[derive(Debug, Clone, Copy)]
+#[allow(clippy::struct_field_names)]
 pub struct Actor {
     /// The user performing the action.
     pub user_id: Uuid,
@@ -45,7 +46,7 @@ where
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
         let State(app_state) = State::<AppState>::from_request_parts(parts, state)
             .await
-            .map_err(|err| err.into_response())?;
+            .map_err(axum::response::IntoResponse::into_response)?;
 
         // 1. Try cookie-backed session.
         if let Some(session_id) = extract_session_cookie(parts) {
@@ -192,7 +193,7 @@ where
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
         let State(app_state) = State::<AppState>::from_request_parts(parts, state)
             .await
-            .map_err(|err| err.into_response())?;
+            .map_err(axum::response::IntoResponse::into_response)?;
 
         if let Some(session_id) = extract_session_cookie(parts) {
             if let Some(session) = kubinate_identity::session::resolve(&app_state.db, session_id)
@@ -287,7 +288,7 @@ where
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
         let State(app_state) = State::<AppState>::from_request_parts(parts, state)
             .await
-            .map_err(|err| err.into_response())?;
+            .map_err(axum::response::IntoResponse::into_response)?;
         let actor = Actor::from_request_parts(parts, state).await?;
 
         // 1. MFA gate. Skip the check entirely in dev-header mode
@@ -309,7 +310,7 @@ where
                     "session mfa-state lookup failed",
                 )
             })?;
-            let satisfied = mfa_satisfied.map(|(b,)| b).unwrap_or(false);
+            let satisfied = mfa_satisfied.is_some_and(|(b,)| b);
             if !satisfied {
                 // Map to the platform error so the Problem Details
                 // mapper renders the structured `mfa_required` code.

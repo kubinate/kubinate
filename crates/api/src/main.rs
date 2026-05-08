@@ -94,7 +94,7 @@ struct AppState {
     /// VictoriaMetrics-backed impl post-spike (see
     /// `docs/decisions/sprint-3-observability-tsdb.md`).
     metrics_store: Arc<dyn kubinate_observability::metrics::MetricsStore>,
-    /// Sprint 4 ticket 05 — WebAuthn ceremony facade. `None` when
+    /// Sprint 4 ticket 05 — `WebAuthn` ceremony facade. `None` when
     /// the env vars are not set; `auth_passkey` routes return 503
     /// in that case while the rest of the API works unchanged.
     ceremonies: Option<Arc<kubinate_identity::webauthn::Ceremonies>>,
@@ -123,6 +123,7 @@ struct ClusterSettings {
 }
 
 #[tokio::main]
+#[allow(clippy::too_many_lines)]
 async fn main() -> anyhow::Result<()> {
     dotenvy::dotenv().ok();
 

@@ -20,11 +20,11 @@
 //! a separate review pass. For now: registering a passkey is opt-in
 //! per user; the OAuth callback still issues full sessions.
 //!
-//! WebAuthn opt-in: if `KUBINATE_WEBAUTHN_RP_ID` /
+//! `WebAuthn` opt-in: if `KUBINATE_WEBAUTHN_RP_ID` /
 //! `KUBINATE_WEBAUTHN_RP_ORIGIN` aren't set, every handler returns
 //! 503 with a Problem Details body. The rest of the API works
 //! unchanged. This keeps existing dev / prod deploys functional
-//! while operators roll out the WebAuthn config.
+//! while operators roll out the `WebAuthn` config.
 
 use std::sync::Arc;
 
@@ -73,7 +73,7 @@ pub fn recovery_routes() -> Router<AppState> {
 
 #[derive(Deserialize)]
 struct RegisterStartRequest {
-    /// User-facing label for the new passkey ("YubiKey 5C").
+    /// User-facing label for the new passkey (e.g. "`YubiKey` 5C").
     nickname: String,
 }
 
@@ -609,10 +609,10 @@ async fn audit_passkey_event_for_actor(
     .map_err(PlatformError::from)?;
 
     let ctx = audit_ctx::from_actor_and_headers(actor, headers);
-    ctx.apply(&mut *tx).await.map_err(ApiError::from)?;
+    ctx.apply(&mut tx).await.map_err(ApiError::from)?;
 
     audit::append_explicit(
-        &mut *tx,
+        &mut tx,
         actor.organization_id,
         action,
         resource_type,
@@ -665,6 +665,10 @@ async fn audit_passkey_event_for_user(
 /// Same as [`audit_passkey_event_for_user`] but with an explicit
 /// `decision` field — used by the failed-redeem path where the
 /// chain entry needs `denied` rather than `allowed`.
+///
+/// # Errors
+/// Returns an `ApiError` if the database transaction or audit append fails.
+#[allow(clippy::too_many_arguments)]
 async fn audit_passkey_event_for_user_with_decision(
     state: &AppState,
     user_id: Uuid,
@@ -698,16 +702,17 @@ async fn audit_passkey_event_for_user_with_decision(
 
     for (org_id,) in memberships {
         let mut tx = state.db.begin().await.map_err(PlatformError::from)?;
+        #[allow(clippy::explicit_auto_deref)]
         sqlx::query(&format!("SET LOCAL app.current_tenant_id = '{org_id}'"))
             .execute(&mut *tx)
             .await
             .map_err(PlatformError::from)?;
 
         let ctx = audit_ctx::from_user_id_and_headers(user_id, headers);
-        ctx.apply(&mut *tx).await.map_err(ApiError::from)?;
+        ctx.apply(&mut tx).await.map_err(ApiError::from)?;
 
         audit::append_explicit(
-            &mut *tx,
+            &mut tx,
             org_id,
             action,
             resource_type,

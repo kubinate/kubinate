@@ -9,18 +9,17 @@
 //!
 //! ## Module layout
 //!
-//! - [`config`]       — Layered configuration (env + file) loader.
-//! - [`error`]        — Canonical platform error type, convertible into
-//!                      Problem Details responses at the API edge.
-//! - [`ids`]          — Typed ID newtypes (UUID v7 generators).
-//! - [`telemetry`]    — `tracing` + OpenTelemetry bootstrap.
-//! - [`db`]           — Postgres pool, migrations runner.
-//! - [`tenant`]       — [`TenantScopedTransaction`] helper implementing
-//!                      the RLS session variable dance described in
-//!                      ADR-0006.
-//! - [`clock`]        — Injectable clock for deterministic tests.
-//! - [`secrets`]      — Envelope encryption primitives (pgcrypto in
-//!                      Phases 0–2, Vault in Phase 3 — see ADR-0007).
+//! - [`config`] — Layered configuration (env + file) loader.
+//! - [`error`] — Canonical platform error type, convertible into
+//!   Problem Details responses at the API edge.
+//! - [`ids`] — Typed ID newtypes (UUID v7 generators).
+//! - [`telemetry`] — `tracing` + OpenTelemetry bootstrap.
+//! - [`db`] — Postgres pool, migrations runner.
+//! - [`tenant`] — [`TenantScopedTransaction`] helper implementing
+//!   the RLS session variable dance described in ADR-0006.
+//! - [`clock`] — Injectable clock for deterministic tests.
+//! - [`secrets`] — Envelope encryption primitives (pgcrypto in
+//!   Phases 0–2, Vault in Phase 3 — see ADR-0007).
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs, clippy::pedantic)]

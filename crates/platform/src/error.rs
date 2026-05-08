@@ -18,7 +18,7 @@ pub enum PlatformError {
     #[error("forbidden: {0}")]
     Forbidden(String),
 
-    /// The caller's session is partial: WebAuthn assertion has not
+    /// The caller's session is partial: `WebAuthn` assertion has not
     /// been completed but the route requires `Session.mfa_satisfied
     /// = true`. The API edge maps this to a 401 with the
     /// `mfa_required` Problem Details code so the SPA can route the

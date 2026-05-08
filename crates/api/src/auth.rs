@@ -22,7 +22,7 @@ use sha2::{Digest, Sha256};
 
 use crate::{actor::SESSION_COOKIE, problem::ApiError, AppState};
 
-/// IdP literal used in `user_oidc_identities.issuer` for GitHub.
+/// `IdP` literal used in `user_oidc_identities.issuer` for GitHub.
 const PROVIDER_GITHUB: &str = "github";
 
 /// Mount auth routes.
@@ -187,10 +187,7 @@ async fn logout(State(state): State<AppState>, headers: HeaderMap) -> impl IntoR
             }
         }
     }
-    let clear = format!(
-        "{name}=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0",
-        name = SESSION_COOKIE,
-    );
+    let clear = format!("{SESSION_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0",);
     let mut response = StatusCode::NO_CONTENT.into_response();
     response
         .headers_mut()
