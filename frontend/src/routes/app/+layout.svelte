@@ -1,4 +1,6 @@
 <script lang="ts">
+  import MfaBanner from '$lib/components/MfaBanner.svelte';
+
   let { children, data } = $props();
 </script>
 
@@ -10,6 +12,8 @@
     <a href="/app/settings">Settings</a>
   </nav>
 </aside>
+
+<MfaBanner mfaState={data.mfa_state} />
 
 <section>
   {@render children()}
