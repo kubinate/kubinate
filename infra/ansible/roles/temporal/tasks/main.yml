@@ -1,0 +1,12 @@
+---
+# Temporal needs nothing on disk — its persistence sits inside the
+# postgres data volume the postgres role mounted. The compose fragment
+# is rendered together with kubinate_api below.
+
+- name: Ensure temporal data subdir exists (visibility cache)
+  ansible.builtin.file:
+    path: "{{ kubinate_data_mount }}/temporal"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"

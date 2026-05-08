@@ -1,0 +1,12 @@
+---
+# Restart the Vault container after config changes. Wraps the
+# docker-compose fragment that the kubinate_api role assembles —
+# the parent compose project is what `systemctl restart
+# kubinate.service` actually targets, but we keep the role-local
+# handler so a config-only change can target Vault without
+# bouncing the API.
+
+- name: restart vault container
+  ansible.builtin.command:
+    cmd: "docker compose -f {{ kubinate_data_mount }}/compose/docker-compose.yml restart vault"
+  changed_when: false

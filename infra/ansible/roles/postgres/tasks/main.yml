@@ -1,0 +1,37 @@
+---
+# Ensure the data volume is mounted, then render the postgres-only
+# docker-compose fragment. Compose itself is a single file shared by
+# every container role — see the kubinate_api role for the assemble
+# step.
+
+- name: Ensure mount point exists
+  ansible.builtin.file:
+    path: "{{ kubinate_data_mount }}"
+    state: directory
+    owner: kubinate
+    group: kubinate
+    mode: "0750"
+
+- name: Add data volume to fstab
+  ansible.posix.mount:
+    path: "{{ kubinate_data_mount }}"
+    src: "{{ kubinate_data_device }}"
+    fstype: ext4
+    opts: "discard,defaults"
+    state: mounted
+
+- name: Ensure postgres data subdir exists
+  ansible.builtin.file:
+    path: "{{ kubinate_data_mount }}/postgres"
+    state: directory
+    owner: "999"  # postgres user inside the container image
+    group: "999"
+    mode: "0700"
+
+- name: Stage init script for the multi-database setup
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../scripts/create-multiple-postgres-databases.sh"
+    dest: "{{ kubinate_install_dir }}/postgres-init.sh"
+    owner: root
+    group: root
+    mode: "0755"

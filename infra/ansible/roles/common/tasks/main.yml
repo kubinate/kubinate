@@ -1,0 +1,36 @@
+---
+- name: Set timezone to UTC
+  community.general.timezone:
+    name: UTC
+
+- name: Apply security updates automatically
+  ansible.builtin.apt:
+    name:
+      - unattended-upgrades
+      - apt-listchanges
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Configure unattended-upgrades to apply security only
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/52unattended-upgrades-local
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      Unattended-Upgrade::Origins-Pattern {
+          "origin=Debian,codename=${distro_codename},label=Debian-Security";
+      };
+      Unattended-Upgrade::Automatic-Reboot "false";
+  notify: restart unattended-upgrades
+
+- name: Ensure useful base packages are present
+  ansible.builtin.apt:
+    name:
+      - curl
+      - jq
+      - rsync
+      - htop
+      - ca-certificates
+    state: present

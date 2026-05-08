@@ -1,0 +1,26 @@
+// Sprint 4 ticket 02 — minimal Vault config.
+// Single-node, file-storage, loopback listener.
+// Cluster-mode + raft storage land in a Phase 4+ ticket if
+// operational pressure justifies the migration.
+
+storage "file" {
+  path = "/vault/file"
+}
+
+listener "tcp" {
+  address     = "{{ vault_listen_addr }}"
+  // mTLS terminates upstream (Cloudflare Tunnel in Phase 2,
+  // k3s ingress in Phase 3+). Vault listens plaintext on
+  // loopback; the tls_disable comment names the assumption
+  // explicitly so a future operator doesn't enable
+  // tls_disable_client_certs by mistake.
+  tls_disable = true
+}
+
+api_addr = "http://{{ vault_listen_addr }}"
+
+// Audit lands in a follow-up role task once Vault is unsealed +
+// running; declaring the device in HCL would block on a sealed
+// instance at boot. Keep this file pure config.
+ui = false
+disable_mlock = true

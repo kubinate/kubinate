@@ -1,0 +1,40 @@
+// Sprint 4 ticket 02 — Vault policy for the kubinate-api workload.
+//
+// Scope:
+//
+// 1. Transit-engine encrypt/decrypt on `<key_prefix>/*` keys. The
+//    application creates one key per organization
+//    (`<key_prefix>/<organization_id>`) lazily during the first
+//    put; this glob covers every present and future tenant.
+// 2. The `keys/<name>` create endpoint, also globbed under the
+//    same prefix, so the lazy ensure_key path doesn't require
+//    operator pre-provisioning.
+//
+// CRITICAL: `vault_kubinate_key_prefix` (default `kubinate`) MUST
+// match the `KUBINATE_VAULT_KEY_PREFIX` env var on the API binary,
+// which defaults to `kubinate` in `crates/api/src/main.rs`. If the
+// two diverge, the API gets 403 on every encrypt / decrypt call
+// because the AppRole's policy doesn't cover the path the API is
+// hitting. **Do not collapse this with `vault_kubinate_role_name`**
+// — they're independent on purpose; the role name belongs to the
+// AppRole binding, the prefix belongs to the key namespace.
+//
+// Notably absent:
+// - No `read` capability on transit keys. The application doesn't
+//   need to introspect key metadata; the encrypt/decrypt
+//   permissions are enough.
+// - No access outside the prefix's namespace. A compromised AppRole
+//   token cannot reach any secret outside the application's own
+//   scope.
+
+path "transit/encrypt/{{ vault_kubinate_key_prefix }}/*" {
+  capabilities = ["update"]
+}
+
+path "transit/decrypt/{{ vault_kubinate_key_prefix }}/*" {
+  capabilities = ["update"]
+}
+
+path "transit/keys/{{ vault_kubinate_key_prefix }}/*" {
+  capabilities = ["create", "update"]
+}

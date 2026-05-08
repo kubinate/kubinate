@@ -1,0 +1,48 @@
+---
+# Cloudflare Tunnel connector. ADR-0004 specifies that no inbound
+# traffic to the VPS comes via 80/443 — Cloudflare reaches the API by
+# initiating a tunnel from the VPS outward.
+
+- name: Stage tunnel token file (mode 0400)
+  ansible.builtin.copy:
+    dest: /etc/cloudflared/tunnel.token
+    owner: root
+    group: root
+    mode: "0400"
+    content: "{{ vault_cloudflared_tunnel_token }}\n"
+  notify: restart cloudflared
+
+- name: Render cloudflared systemd unit
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/cloudflared.service
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Cloudflare Tunnel connector
+      After=docker.service
+      Requires=docker.service
+
+      [Service]
+      Type=simple
+      Restart=always
+      RestartSec=5
+      ExecStartPre=-/usr/bin/docker rm -f kubinate-cloudflared
+      ExecStart=/usr/bin/docker run --rm --name kubinate-cloudflared \
+        --network host \
+        -v /etc/cloudflared:/etc/cloudflared:ro \
+        {{ kubinate_cloudflared_image }} \
+        tunnel --no-autoupdate run --token-file /etc/cloudflared/tunnel.token
+      ExecStop=/usr/bin/docker stop kubinate-cloudflared
+
+      [Install]
+      WantedBy=multi-user.target
+  notify: restart cloudflared
+
+- name: Enable + start cloudflared
+  ansible.builtin.systemd:
+    name: cloudflared
+    enabled: true
+    state: started
+    daemon_reload: true

@@ -1,0 +1,55 @@
+# Rendered by ansible. Do not hand-edit on the host.
+# Single compose file for the entire stack:
+#   * postgres (multi-db init for kubinate + temporal)
+#   * temporal (depends_on postgres)
+#   * kubinate-api (depends_on temporal + postgres)
+#   * cloudflared (separate role manages the connector)
+
+services:
+  postgres:
+    image: {{ kubinate_postgres_image }}
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: {{ vault_postgres_user }}
+      POSTGRES_PASSWORD: {{ vault_postgres_password }}
+      POSTGRES_DB: {{ vault_postgres_db }}
+      POSTGRES_MULTIPLE_DATABASES: "{{ vault_postgres_db }},{{ vault_temporal_db }}"
+    volumes:
+      - "{{ kubinate_data_mount }}/postgres:/var/lib/postgresql/data"
+      - "{{ kubinate_install_dir }}/postgres-init.sh:/docker-entrypoint-initdb.d/00-create-dbs.sh:ro"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U {{ vault_postgres_user }}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  temporal:
+    image: {{ kubinate_temporal_image }}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB: postgres12
+      DB_PORT: "5432"
+      POSTGRES_USER: {{ vault_postgres_user }}
+      POSTGRES_PWD: {{ vault_postgres_password }}
+      POSTGRES_SEEDS: postgres
+      DBNAME: {{ vault_temporal_db }}
+      VISIBILITY_DBNAME: {{ vault_temporal_db }}
+
+  kubinate-api:
+    image: {{ kubinate_api_image }}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - {{ kubinate_env_file }}
+    ports:
+      - "127.0.0.1:8080:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/readyz || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5

@@ -1,0 +1,24 @@
+---
+# Non-secret variables for every host in the inventory.
+# Secrets live in `vault.yml` (encrypted with Ansible Vault).
+
+kubinate_install_dir: /opt/kubinate
+kubinate_compose_dir: "{{ kubinate_install_dir }}/compose"
+kubinate_env_file: "{{ kubinate_install_dir }}/api.env"
+
+# Image tags the docker-compose stack pins. Bumped in the same PR
+# that ships the corresponding Cargo.lock / migration changes.
+kubinate_api_image: "ghcr.io/kubinate/kubinate-api:0.1.0"
+kubinate_postgres_image: "postgres:16-alpine"
+kubinate_temporal_image: "temporalio/auto-setup:1.25"
+kubinate_cloudflared_image: "cloudflare/cloudflared:2025.4.1"
+
+# Cloudflare Tunnel connector pulls config from a token stored in
+# vault.yml. The tunnel itself is provisioned out-of-band via
+# `cloudflared tunnel create`; we only run the connector here.
+kubinate_cloudflared_tunnel_name: kubinate-prod
+
+# Postgres backup destination — Hetzner Object Storage. Bucket and
+# WAL prefix are public-ish (rotated alongside Postgres credentials).
+kubinate_backup_s3_endpoint: "https://nbg1.your-objectstorage.com"
+kubinate_backup_s3_bucket: kubinate-pg-backups

@@ -1,0 +1,74 @@
+#cloud-config
+# Minimal first-boot bootstrap for the Kubinate control-plane VPS.
+# The rest of the configuration (Docker Compose stack, Cloudflare Tunnel
+# connector, Postgres backup job) is applied by the Ansible playbook in a
+# later sprint. Keep this file small — every line here is something Ansible
+# cannot fix idempotently later.
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - ca-certificates
+  - curl
+  - gnupg
+  - ufw
+  - fail2ban
+  - unattended-upgrades
+
+users:
+  - name: kubinate
+    groups: [sudo]
+    shell: /bin/bash
+    sudo: "ALL=(ALL) NOPASSWD:ALL"
+    ssh_authorized_keys: []  # populated via hcloud_ssh_key attached to the server
+
+ssh_pwauth: false
+disable_root: true
+
+write_files:
+  - path: /etc/ssh/sshd_config.d/10-kubinate.conf
+    owner: root:root
+    permissions: "0644"
+    content: |
+      PermitRootLogin no
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+      X11Forwarding no
+      AllowTcpForwarding no
+
+  - path: /etc/apt/sources.list.d/docker.list.tmpl
+    owner: root:root
+    permissions: "0644"
+    content: |
+      deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian bookworm stable
+
+runcmd:
+  # Docker Engine + compose plugin.
+  - install -m 0755 -d /etc/apt/keyrings
+  - curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
+  - chmod a+r /etc/apt/keyrings/docker.asc
+  - |
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] \
+      https://download.docker.com/linux/debian $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
+      > /etc/apt/sources.list.d/docker.list
+  - apt-get update
+  - DEBIAN_FRONTEND=noninteractive apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+  - usermod -aG docker kubinate
+  - systemctl enable --now docker
+
+  # Host firewall as defence-in-depth on top of the Hetzner Cloud firewall.
+  - ufw default deny incoming
+  - ufw default allow outgoing
+  - ufw allow 22/tcp
+  - ufw --force enable
+
+  # Reload SSH to pick up the hardening drop-in.
+  - systemctl reload ssh
+
+  # Attach and mount the data volume (idempotent; Hetzner cloud-init
+  # surfaces the volume at /dev/disk/by-id/scsi-0HC_Volume_*).
+  - mkdir -p /var/lib/kubinate
+  - chown kubinate:kubinate /var/lib/kubinate
+
+final_message: "kubinate cp node ready after $UPTIME seconds"

@@ -1,0 +1,8 @@
+# Operator-specific copies of the example files. The `*.example`
+# files are committed plaintext; the real files are not.
+inventory.ini
+group_vars/all/vault.yml
+
+# Ansible runtime artefacts.
+.ansible-fact-cache/
+*.retry

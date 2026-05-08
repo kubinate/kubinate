@@ -1,0 +1,211 @@
+---
+# Sprint 4 ticket 02 — Vault deploy on the dogfood cluster.
+#
+# Three phases:
+#   1. Filesystem + config (idempotent every run).
+#   2. First-run init: vault operator init, gated on a sentinel.
+#   3. Transit + audit + AppRole bootstrap, gated on Vault being
+#      unsealed (operator action between init and this phase).
+#
+# Each phase tagged so an operator can re-run a specific subset
+# during a recovery flow:
+#   ansible-playbook site.yml --tags vault-bootstrap
+#
+# Pinning style + paths match the existing roles
+# (postgres / temporal / kubinate_api).
+
+- name: Ensure vault data dir exists
+  ansible.builtin.file:
+    path: "{{ vault_data_dir }}"
+    state: directory
+    owner: root
+    group: root
+    # 0700 — only the Vault container's root user reads this.
+    mode: "0700"
+  tags: [vault-fs]
+
+- name: Render vault config.hcl
+  ansible.builtin.template:
+    src: config.hcl.j2
+    dest: "{{ vault_data_dir }}/config.hcl"
+    owner: root
+    group: root
+    mode: "0600"
+  notify: restart vault container
+  tags: [vault-config]
+
+- name: Render vault docker-compose fragment
+  ansible.builtin.template:
+    src: compose-fragment.yml.j2
+    dest: "{{ kubinate_data_mount }}/compose/vault.yml"
+    owner: root
+    group: root
+    mode: "0640"
+  notify: restart vault container
+  tags: [vault-config]
+
+- name: Pull vault image
+  community.docker.docker_image:
+    name: "hashicorp/vault:{{ vault_version }}"
+    source: pull
+  tags: [vault-image]
+
+# --- First-run init -------------------------------------------------------
+
+- name: Check whether vault has been initialised
+  ansible.builtin.stat:
+    path: "{{ vault_init_sentinel }}"
+  register: vault_init_state
+  tags: [vault-bootstrap]
+
+- name: Initialise vault (one-shot; operator unseals manually)
+  # Run inside the vault container, write the JSON output to a
+  # 0600 file inside the data volume rather than registering it in
+  # Ansible state. This keeps the unseal keys off both the
+  # playbook log AND the registered-vars surface — `ANSIBLE_DEBUG=1`
+  # / `--diff` cannot exfiltrate what was never registered.
+  #
+  # The operator's recovery flow is:
+  #   1. Copy the file out of the volume:
+  #        docker cp vault:/vault/file/init.json ./init.json
+  #   2. Encrypt under Ansible Vault (or a hardware token):
+  #        ansible-vault encrypt --vault-id=ops@prompt ./init.json
+  #   3. Move the encrypted file into
+  #        group_vars/all/vault_init.yml
+  #   4. Shred the in-volume copy:
+  #        docker exec vault rm -P /vault/file/init.json
+  #   5. Run `docker exec vault vault operator unseal <key>` three
+  #      times with three of the five keys.
+  #
+  # See also `docs/runbooks/secrets-migration.md` (forthcoming).
+  ansible.builtin.command:
+    cmd: >-
+      docker exec vault sh -c
+      'umask 077 && vault operator init
+       -key-shares=5 -key-threshold=3 -format=json
+       > /vault/file/init.json'
+  register: vault_init_output
+  when: not vault_init_state.stat.exists
+  changed_when: vault_init_output.rc == 0
+  failed_when:
+    - vault_init_output.rc != 0
+    - "'already initialized' not in (vault_init_output.stderr | default(''))"
+  no_log: true
+  tags: [vault-bootstrap]
+
+- name: Mark vault as initialised
+  ansible.builtin.file:
+    path: "{{ vault_init_sentinel }}"
+    state: touch
+    owner: root
+    group: root
+    mode: "0600"
+  when: not vault_init_state.stat.exists
+  tags: [vault-bootstrap]
+
+- name: Print operator hand-off message
+  ansible.builtin.debug:
+    msg: |
+      Vault has been initialised. The init JSON (5 unseal keys + root
+      token) was written to a 0600 file at /vault/file/init.json
+      inside the vault container.
+      ⚠️  DO NOT use `ANSIBLE_DEBUG=1` to recover — that path is
+      exfiltration-prone in older Ansible versions.
+      Operator flow:
+        1. docker cp vault:/vault/file/init.json ./init.json
+        2. ansible-vault encrypt ./init.json   (or hardware-token wrap)
+        3. mv ./init.json group_vars/all/vault_init.yml
+        4. docker exec vault rm -P /vault/file/init.json
+        5. docker exec vault vault operator unseal <key>   (× 3)
+      Subsequent role runs are idempotent + skip init.
+  when: not vault_init_state.stat.exists
+  tags: [vault-bootstrap]
+
+# --- Post-unseal bootstrap ------------------------------------------------
+# Everything below assumes Vault is unsealed. The role defers these
+# tasks to a separate run after the operator has unsealed; the
+# `vault status` precondition gates them.
+
+- name: Confirm vault is unsealed (precondition for bootstrap)
+  ansible.builtin.command:
+    cmd: docker exec vault vault status -format=json
+  register: vault_status
+  changed_when: false
+  failed_when: false
+  tags: [vault-bootstrap-policy]
+
+- name: Stop role gracefully when vault is sealed
+  ansible.builtin.meta: end_play
+  when: >
+    vault_status.rc != 0 or
+    (vault_status.stdout | from_json).sealed | default(true)
+  tags: [vault-bootstrap-policy]
+
+- name: Enable transit secrets engine (idempotent)
+  ansible.builtin.command:
+    cmd: docker exec vault vault secrets enable -path=transit transit
+  register: vault_transit_enable
+  changed_when: vault_transit_enable.rc == 0
+  failed_when:
+    - vault_transit_enable.rc != 0
+    - "'path is already in use' not in vault_transit_enable.stderr"
+  tags: [vault-bootstrap-policy]
+
+- name: Enable file audit device (idempotent)
+  ansible.builtin.command:
+    cmd: >
+      docker exec vault vault audit enable
+      -path=file file file_path=/vault/file/audit.log
+  register: vault_audit_enable
+  changed_when: vault_audit_enable.rc == 0
+  failed_when:
+    - vault_audit_enable.rc != 0
+    - "'path already in use' not in vault_audit_enable.stderr"
+  tags: [vault-bootstrap-policy]
+
+- name: Render kubinate-api policy
+  ansible.builtin.template:
+    src: policy-kubinate-api.hcl.j2
+    dest: "{{ vault_data_dir }}/policy-kubinate-api.hcl"
+    owner: root
+    group: root
+    mode: "0600"
+  tags: [vault-bootstrap-policy]
+
+- name: Apply kubinate-api policy
+  ansible.builtin.command:
+    cmd: >
+      docker exec vault vault policy write
+      {{ vault_kubinate_policy_name }}
+      /vault/file/policy-kubinate-api.hcl
+  register: vault_policy_write
+  changed_when: vault_policy_write.rc == 0
+  tags: [vault-bootstrap-policy]
+
+- name: Enable approle auth method (idempotent)
+  ansible.builtin.command:
+    cmd: docker exec vault vault auth enable approle
+  register: vault_approle_enable
+  changed_when: vault_approle_enable.rc == 0
+  failed_when:
+    - vault_approle_enable.rc != 0
+    - "'path is already in use' not in vault_approle_enable.stderr"
+  tags: [vault-bootstrap-policy]
+
+- name: Configure kubinate-api approle
+  ansible.builtin.command:
+    cmd: >
+      docker exec vault vault write
+      auth/approle/role/{{ vault_kubinate_role_name }}
+      token_policies={{ vault_kubinate_policy_name }}
+      token_ttl={{ vault_kubinate_token_ttl }}
+      secret_id_ttl={{ vault_kubinate_secret_id_ttl }}
+  register: vault_approle_role
+  changed_when: vault_approle_role.rc == 0
+  tags: [vault-bootstrap-policy]
+
+# The role-id + secret-id retrieval lives in a follow-up handoff
+# task that emits the values into a file the kubinate_api role
+# reads. Skipped here because the secret-id wants to land in
+# Ansible Vault, not in plain stdout — the handoff task lives in
+# `handoff.yml` (forthcoming, not in this commit).

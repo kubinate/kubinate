@@ -1,0 +1,44 @@
+---
+# vault role defaults — override in group_vars/all/main.yml or
+# inventory variables to deploy a different version / topology.
+
+# Pinned upstream image. Bump in lockstep with a CHANGELOG review;
+# transit-engine wire format is stable across minor versions, but
+# audit-log shape has changed in past releases.
+vault_version: "1.18.2"
+
+# File-storage backend root. Lives under the same data mount as
+# Postgres + Temporal so a single-volume backup snapshot is
+# sufficient. The role will create this directory.
+vault_data_dir: "{{ kubinate_data_mount }}/vault"
+
+# Listener address. Loopback-only — Cloudflare Tunnel (or, in
+# Phase 3+, the k3s ingress) terminates external traffic and
+# reverse-proxies into Vault. Vault never accepts public traffic
+# on its own listener.
+vault_listen_addr: "127.0.0.1:8200"
+
+# AppRole policy name + role name. Don't change post-bootstrap —
+# the kubinate_api role reads the resulting role-id + secret-id
+# under these names.
+vault_kubinate_policy_name: "kubinate-api"
+vault_kubinate_role_name: "kubinate-api"
+
+# Transit-engine key namespace prefix. **Must match
+# `KUBINATE_VAULT_KEY_PREFIX` on the API binary** (default
+# `kubinate` per `crates/platform/src/secrets.rs::vault_key_name`).
+# Decoupled from the role name above because the policy globs
+# under this prefix; if the two were collapsed (as they were in
+# an earlier iteration), the API would 403 on every encrypt /
+# decrypt call.
+vault_kubinate_key_prefix: "kubinate"
+
+# Token TTLs. The AppRole-issued token rotates every login; the
+# secret-id (which is what kubinate-api stores on disk) is
+# long-lived but rotatable.
+vault_kubinate_token_ttl: "1h"
+vault_kubinate_secret_id_ttl: "2160h"  # 90 days
+
+# Sentinel path that gates the first-run init step. Manual delete
+# + role re-run is the supported re-init path.
+vault_init_sentinel: "{{ vault_data_dir }}/.kubinate-vault-initialised"

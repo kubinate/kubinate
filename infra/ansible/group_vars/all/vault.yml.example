@@ -1,0 +1,38 @@
+---
+# Operator workflow:
+#   1. `cp vault.yml.example vault.yml`
+#   2. Fill in real values (pull from the operator's 1Password vault
+#      named "Kubinate Production Secrets" — see ADR-0007).
+#   3. `ansible-vault encrypt vault.yml`
+#   4. Commit `vault.yml` (encrypted; safe).
+#
+# `vault.yml.example` (this file) is the schema reference and is
+# committed in plaintext.
+
+# ----------------- Database --------------------------------------
+vault_postgres_user: kubinate
+vault_postgres_password: CHANGE_ME
+vault_postgres_db: kubinate
+vault_temporal_db: temporal
+
+# ----------------- Envelope encryption (ADR-0007) ----------------
+# Base64-encoded 32 bytes. Generate via:
+#   openssl rand -base64 32 | tr -d '\n'
+vault_kubinate_kek: CHANGE_ME_BASE64_32_BYTES==
+
+# ----------------- GitHub OIDC (Sprint 1 ticket 07) --------------
+vault_github_client_id: Iv1.xxxxxxxxxxxxxxxx
+vault_github_client_secret: CHANGE_ME
+
+# ----------------- Stripe (Sprint 2 ticket 08) -------------------
+vault_stripe_secret_key: sk_live_CHANGE_ME
+vault_stripe_webhook_secret: whsec_CHANGE_ME
+
+# ----------------- Cloudflare Tunnel -----------------------------
+# Token issued by `cloudflared tunnel token <tunnel-name>` on the
+# operator's workstation, then stored here.
+vault_cloudflared_tunnel_token: CHANGE_ME
+
+# ----------------- Postgres backup (Hetzner Object Storage) ------
+vault_backup_s3_access_key: CHANGE_ME
+vault_backup_s3_secret_key: CHANGE_ME

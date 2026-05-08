@@ -1,0 +1,21 @@
+# Copy to terraform.tfvars and fill in. terraform.tfvars is gitignored.
+#
+# Generate a token in the Hetzner Cloud Console for a dedicated project
+# named `kubinate-prod` (see ADR-0004 for project-per-environment isolation).
+
+hcloud_token = "hcloud_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+
+environment   = "prod"
+location      = "nbg1"
+server_type   = "cpx41"
+
+# Paste your operator's ed25519 public key here. Rotate if it leaks.
+ssh_public_key = "ssh-ed25519 AAAA... operator@kubinate"
+
+# Restrict SSH to your static IP (or VPN). Start permissive only if you
+# must, then tighten after first apply.
+admin_ssh_cidrs = [
+  # "203.0.113.42/32",
+]
+
+volume_size_gb = 100

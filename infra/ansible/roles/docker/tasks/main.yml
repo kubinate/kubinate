@@ -1,0 +1,28 @@
+---
+# cloud-init installs Docker on first boot. This role is the converge
+# check: re-runs verify the binary is present and the daemon is up,
+# so a fresh apt upgrade that broke containerd surfaces here.
+
+- name: Verify docker is on PATH
+  ansible.builtin.command: docker --version
+  register: docker_version
+  changed_when: false
+  failed_when: docker_version.rc != 0
+
+- name: Verify docker compose plugin is available
+  ansible.builtin.command: docker compose version
+  register: compose_version
+  changed_when: false
+  failed_when: compose_version.rc != 0
+
+- name: Ensure docker daemon is running
+  ansible.builtin.systemd:
+    name: docker
+    state: started
+    enabled: true
+
+- name: Ensure the kubinate user is in the docker group
+  ansible.builtin.user:
+    name: kubinate
+    groups: docker
+    append: true

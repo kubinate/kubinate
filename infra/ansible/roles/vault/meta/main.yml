@@ -1,0 +1,15 @@
+---
+# Role metadata. Empty galaxy_info is enough — the role is
+# kubinate-internal, not published to Ansible Galaxy.
+galaxy_info:
+  role_name: vault
+  description: Deploy HashiCorp Vault on the dogfood control plane (Sprint 4 ticket 02 partial).
+  license: AGPL-3.0-or-later
+  min_ansible_version: "2.16"
+
+# This role expects the docker engine to be present + the
+# `kubinate_data_mount` to be a writable directory. The `docker`
+# and `postgres` roles run before `vault` in `site.yml` and
+# satisfy both.
+dependencies:
+  - role: docker

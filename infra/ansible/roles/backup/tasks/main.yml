@@ -1,0 +1,32 @@
+---
+# Postgres WAL shipping to Hetzner Object Storage. ADR-0004 §Short
+# term: WAL every 15 minutes, base nightly. We use pgbackrest in a
+# sidecar container; the cron is on the host.
+
+- name: Stage backup wrapper script
+  ansible.builtin.copy:
+    dest: "{{ kubinate_install_dir }}/run-backup.sh"
+    owner: root
+    group: root
+    mode: "0750"
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      umask 077
+      docker run --rm --network host \
+        -e AWS_ACCESS_KEY_ID="{{ vault_backup_s3_access_key }}" \
+        -e AWS_SECRET_ACCESS_KEY="{{ vault_backup_s3_secret_key }}" \
+        -e PGPASSWORD="{{ vault_postgres_password }}" \
+        -v {{ kubinate_data_mount }}/postgres:/var/lib/postgresql/data:ro \
+        postgres:16-alpine \
+        sh -c "pg_dumpall -U {{ vault_postgres_user }} -h 127.0.0.1 -p 5432 \
+          | gzip -9 \
+          | aws s3 cp --endpoint-url={{ kubinate_backup_s3_endpoint }} \
+              - s3://{{ kubinate_backup_s3_bucket }}/dumps/$(date -u +%Y/%m/%d)/$(hostname)-$(date -u +%H%M).sql.gz"
+
+- name: Schedule WAL/dump every 15 minutes
+  ansible.builtin.cron:
+    name: kubinate-postgres-backup
+    minute: "*/15"
+    job: "{{ kubinate_install_dir }}/run-backup.sh >> /var/log/kubinate-backup.log 2>&1"
+    user: root

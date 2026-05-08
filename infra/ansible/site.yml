@@ -1,0 +1,32 @@
+---
+# Top-level playbook for the Kubinate control plane.
+# Apply with:
+#   ansible-playbook -i inventory.ini site.yml --ask-vault-pass
+
+- name: Configure the Kubinate control plane VPS
+  hosts: control_plane
+  become: true
+  gather_facts: true
+  vars_files:
+    - group_vars/all/vault.yml
+
+  pre_tasks:
+    - name: Ensure required vault keys are set
+      ansible.builtin.assert:
+        that:
+          - vault_postgres_password != "CHANGE_ME"
+          - vault_kubinate_kek is defined
+          - vault_kubinate_kek | length > 0
+          - vault_kubinate_kek != "CHANGE_ME_BASE64_32_BYTES=="
+          - vault_github_client_secret != "CHANGE_ME"
+          - vault_cloudflared_tunnel_token != "CHANGE_ME"
+        fail_msg: "vault.yml has placeholders — fill them before deploying"
+
+  roles:
+    - role: common
+    - role: docker
+    - role: postgres
+    - role: temporal
+    - role: kubinate_api
+    - role: cloudflared
+    - role: backup

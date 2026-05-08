@@ -1,0 +1,45 @@
+#cloud-config
+# Minimal first-boot cloud-init for a k3s node provisioned by
+# Kubinate. Designed to be SSH-ready as quickly as possible — k3s
+# itself is installed by the workflow's SSH activity, not here, so
+# this file should not pin a particular k3s version.
+
+package_update: true
+packages:
+  - ca-certificates
+  - curl
+  - gnupg
+  - ufw
+  - fail2ban
+
+users:
+  - name: kubinate
+    groups: [sudo]
+    shell: /bin/bash
+    sudo: "ALL=(ALL) NOPASSWD:ALL"
+
+ssh_pwauth: false
+disable_root: true
+
+write_files:
+  - path: /etc/ssh/sshd_config.d/10-kubinate.conf
+    owner: root:root
+    permissions: "0644"
+    content: |
+      PermitRootLogin no
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+      X11Forwarding no
+
+runcmd:
+  - ufw default deny incoming
+  - ufw default allow outgoing
+  - ufw allow 22/tcp
+  - ufw allow 6443/tcp
+  - ufw allow 10250/tcp
+  - ufw allow 8472/udp
+  - ufw allow from 10.20.0.0/16
+  - ufw --force enable
+  - systemctl reload ssh
+
+final_message: "kubinate k3s node ready after $UPTIME seconds"

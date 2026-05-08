@@ -1,0 +1,25 @@
+# Sprint 4 ticket 02 — Vault docker-compose fragment.
+# Merged into the parent compose project by the kubinate_api role.
+
+services:
+  vault:
+    image: hashicorp/vault:{{ vault_version }}
+    restart: unless-stopped
+    cap_add:
+      # IPC_LOCK keeps the OS from swapping Vault's in-memory
+      # secrets to disk. `disable_mlock = true` in config.hcl
+      # would let us run without it; we set the cap regardless
+      # so a future config tweak doesn't silently introduce a
+      # swap-leak surface.
+      - IPC_LOCK
+    volumes:
+      - "{{ vault_data_dir }}:/vault/file"
+      - "{{ vault_data_dir }}/config.hcl:/vault/config/config.hcl:ro"
+    command: ["vault", "server", "-config=/vault/config/config.hcl"]
+    network_mode: "host"
+    healthcheck:
+      test:
+        ["CMD", "wget", "-qO-", "http://{{ vault_listen_addr }}/v1/sys/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3

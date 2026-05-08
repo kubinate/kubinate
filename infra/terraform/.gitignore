@@ -1,0 +1,16 @@
+# Provider plugins and lock files — commit .terraform.lock.hcl, ignore the rest
+.terraform/
+.terraform.tfstate.lock.info
+
+# Local state — remote backend is the source of truth once configured
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+
+# Secrets and operator-specific inputs
+terraform.tfvars
+*.auto.tfvars
+*.auto.tfvars.json
+
+# Plan output
+*.tfplan
