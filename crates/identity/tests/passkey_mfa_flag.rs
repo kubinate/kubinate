@@ -21,9 +21,10 @@
 use kubinate_identity::{
     model::MembershipRole,
     repository::{PasskeyRepository, PgPasskeyRepository},
-    session,
+    session::{self, MfaState},
 };
 use sqlx::PgPool;
+use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
 
 async fn seed_org(pool: &PgPool, slug: &str) -> Uuid {
@@ -401,4 +402,152 @@ async fn partial_session_skipped_for_owner_without_passkey(pool: PgPool) {
             .expect("query"),
         "Owner with no passkey ⇒ full session (must_enrol path)",
     );
+}
+
+// ===========================================================================
+// `session::mfa_state` — the four-state SPA hint surfaced via /v1/me.
+// ===========================================================================
+
+async fn seed_session(pool: &PgPool, user_id: Uuid, mfa_satisfied: bool) -> Uuid {
+    let id = Uuid::now_v7();
+    let now = OffsetDateTime::now_utc();
+    sqlx::query(
+        "INSERT INTO sessions (id, user_id, created_at, last_used_at, expires_at, mfa_satisfied)
+         VALUES ($1, $2, $3, $3, $4, $5)",
+    )
+    .bind(id)
+    .bind(user_id)
+    .bind(now)
+    .bind(now + Duration::days(30))
+    .bind(mfa_satisfied)
+    .execute(pool)
+    .await
+    .expect("seed session");
+    id
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn mfa_state_not_required_for_developer(pool: PgPool) {
+    let org = seed_org(&pool, "acme").await;
+    let user = seed_user(&pool, "alice@example.com").await;
+    give_role(&pool, org, user, MembershipRole::Developer).await;
+    let session_id = seed_session(&pool, user, true).await;
+
+    assert_eq!(
+        session::mfa_state(&pool, user, session_id)
+            .await
+            .expect("query"),
+        MfaState::NotRequired,
+    );
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn mfa_state_must_enrol_for_owner_without_passkey(pool: PgPool) {
+    let org = seed_org(&pool, "acme").await;
+    let user = seed_user(&pool, "alice@example.com").await;
+    give_role(&pool, org, user, MembershipRole::Owner).await;
+    let session_id = seed_session(&pool, user, true).await;
+
+    assert_eq!(
+        session::mfa_state(&pool, user, session_id)
+            .await
+            .expect("query"),
+        MfaState::MustEnrol,
+    );
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn mfa_state_must_assert_for_owner_with_partial_session(pool: PgPool) {
+    let org = seed_org(&pool, "acme").await;
+    let user = seed_user(&pool, "alice@example.com").await;
+    give_role(&pool, org, user, MembershipRole::Owner).await;
+    PgPasskeyRepository::new(pool.clone())
+        .insert(user, "cred-1", b"opaque", "device")
+        .await
+        .expect("insert");
+    let session_id = seed_session(&pool, user, false).await;
+
+    assert_eq!(
+        session::mfa_state(&pool, user, session_id)
+            .await
+            .expect("query"),
+        MfaState::MustAssert,
+    );
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn mfa_state_enrolled_for_owner_with_satisfied_session(pool: PgPool) {
+    let org = seed_org(&pool, "acme").await;
+    let user = seed_user(&pool, "alice@example.com").await;
+    give_role(&pool, org, user, MembershipRole::Owner).await;
+    PgPasskeyRepository::new(pool.clone())
+        .insert(user, "cred-1", b"opaque", "device")
+        .await
+        .expect("insert");
+    let session_id = seed_session(&pool, user, true).await;
+
+    assert_eq!(
+        session::mfa_state(&pool, user, session_id)
+            .await
+            .expect("query"),
+        MfaState::Enrolled,
+    );
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn mfa_state_dev_header_user_treated_as_must_assert(pool: PgPool) {
+    // Dev-header mode passes Uuid::nil() for the session id.
+    // Without a real session row to look up, we can't honestly
+    // claim Enrolled — return MustAssert as the safe default.
+    let org = seed_org(&pool, "acme").await;
+    let user = seed_user(&pool, "alice@example.com").await;
+    give_role(&pool, org, user, MembershipRole::Owner).await;
+    PgPasskeyRepository::new(pool.clone())
+        .insert(user, "cred-1", b"opaque", "device")
+        .await
+        .expect("insert");
+
+    assert_eq!(
+        session::mfa_state(&pool, user, Uuid::nil())
+            .await
+            .expect("query"),
+        MfaState::MustAssert,
+    );
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn mfa_state_revoked_session_treated_as_must_assert(pool: PgPool) {
+    // A session id that doesn't resolve (revoked, expired, or
+    // forged) is treated as MustAssert rather than Enrolled.
+    let org = seed_org(&pool, "acme").await;
+    let user = seed_user(&pool, "alice@example.com").await;
+    give_role(&pool, org, user, MembershipRole::Owner).await;
+    PgPasskeyRepository::new(pool.clone())
+        .insert(user, "cred-1", b"opaque", "device")
+        .await
+        .expect("insert");
+    let session_id = seed_session(&pool, user, true).await;
+    sqlx::query("UPDATE sessions SET revoked_at = now() WHERE id = $1")
+        .bind(session_id)
+        .execute(&pool)
+        .await
+        .expect("revoke");
+
+    assert_eq!(
+        session::mfa_state(&pool, user, session_id)
+            .await
+            .expect("query"),
+        MfaState::MustAssert,
+    );
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn mfa_state_unknown_user_returns_not_required(pool: PgPool) {
+    // No user row → no policy → NotRequired. Caller will fail
+    // upstream (the Actor extractor would have rejected) but the
+    // helper itself is total.
+    let result = session::mfa_state(&pool, Uuid::now_v7(), Uuid::now_v7())
+        .await
+        .expect("query");
+    assert_eq!(result, MfaState::NotRequired);
 }

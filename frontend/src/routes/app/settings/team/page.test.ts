@@ -81,7 +81,8 @@ describe('team settings page', () => {
         return fakeResponse({
           user_id: ALICE,
           session_id: '99999999-9999-9999-9999-999999999999',
-          organization_id: ORG
+          organization_id: ORG,
+          mfa_state: 'enrolled'
         });
       }
       if (url.endsWith(`/v1/organizations/${ORG}/members`)) {
@@ -140,7 +141,8 @@ describe('team settings page', () => {
         return fakeResponse({
           user_id: ALICE,
           session_id: '99999999-9999-9999-9999-999999999999',
-          organization_id: ORG
+          organization_id: ORG,
+          mfa_state: 'enrolled'
         });
       }
       if (url.endsWith(`/v1/organizations/${ORG}/members`)) {

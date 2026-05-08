@@ -162,6 +162,83 @@ pub async fn user_requires_partial_session(
     Ok(row.map_or(false, |(b,)| b))
 }
 
+/// SPA-facing MFA state. The four values correspond to the matrix of
+/// `(users.requires_mfa, users.mfa_enrolled, sessions.mfa_satisfied)`:
+///
+/// | requires_mfa | mfa_enrolled | session.mfa_satisfied | state |
+/// |---|---|---|---|
+/// | F | * | * | `NotRequired` |
+/// | T | F | * | `MustEnrol` |
+/// | T | T | F | `MustAssert` |
+/// | T | T | T | `Enrolled` |
+///
+/// Surfaced via `/v1/me` so the dashboard can route to
+/// `/app/settings/security` (must_enrol) or the assertion challenge
+/// (must_assert) without inferring state from a 401 round-trip.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MfaState {
+    /// Owner / Admin role not held; MFA is voluntary and the SPA
+    /// shouldn't push the user toward enrolment.
+    NotRequired,
+    /// Owner / Admin role held but no passkey registered. The SPA
+    /// banners a "register a passkey" prompt; the user lands on the
+    /// dashboard with a full session so they can reach
+    /// `/app/settings/security`.
+    MustEnrol,
+    /// Owner / Admin with a passkey but the current session is
+    /// partial. The SPA routes to the assertion challenge.
+    MustAssert,
+    /// Owner / Admin, passkey registered, current session has
+    /// satisfied the assertion. The dashboard runs unrestricted.
+    Enrolled,
+}
+
+/// Compute [`MfaState`] for `(user_id, session_id)`.
+///
+/// Returns `MustAssert` when the session id doesn't resolve to a
+/// live row (caller passed a stale or revoked session): the safe
+/// default that nudges the SPA to re-authenticate. `Uuid::nil()`
+/// for the session id (dev-header mode) is treated as
+/// `mfa_satisfied = false` for the same reason — dev-header mode
+/// has no real session, so `Enrolled` is not honestly representable.
+pub async fn mfa_state(
+    pool: &PgPool,
+    user_id: Uuid,
+    session_id: Uuid,
+) -> Result<MfaState, PlatformError> {
+    let user_row: Option<(bool, bool)> =
+        sqlx::query_as("SELECT requires_mfa, mfa_enrolled FROM users WHERE id = $1")
+            .bind(user_id)
+            .fetch_optional(pool)
+            .await?;
+    let (requires_mfa, mfa_enrolled) = user_row.unwrap_or((false, false));
+
+    if !requires_mfa {
+        return Ok(MfaState::NotRequired);
+    }
+    if !mfa_enrolled {
+        return Ok(MfaState::MustEnrol);
+    }
+
+    if session_id.is_nil() {
+        return Ok(MfaState::MustAssert);
+    }
+    let session_row: Option<(bool,)> = sqlx::query_as(
+        "SELECT mfa_satisfied FROM sessions
+         WHERE id = $1 AND revoked_at IS NULL AND expires_at > now()",
+    )
+    .bind(session_id)
+    .fetch_optional(pool)
+    .await?;
+    let satisfied = session_row.is_some_and(|(b,)| b);
+    Ok(if satisfied {
+        MfaState::Enrolled
+    } else {
+        MfaState::MustAssert
+    })
+}
+
 /// Promote a partial-MFA session after a successful WebAuthn
 /// assertion. Idempotent: re-running on an already-satisfied session
 /// is a no-op (returns `Ok(())`).
