@@ -17,7 +17,7 @@
   </p>
   <div class="mt-10 flex flex-wrap items-center justify-center gap-4">
     <a
-      href="/app"
+      href="/login"
       class="bg-background text-foreground hover:bg-background/90 rounded-lg px-6 py-3 text-sm font-semibold transition-colors"
     >
       Start free
