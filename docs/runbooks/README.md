@@ -17,6 +17,7 @@ paged engineer can scan a familiar layout under stress.
 | [`observability-proxy-down.md`](./observability-proxy-down.md) | The metric/log query proxy is down, slow, or returning the wrong tenant's data. |
 | [`owner-passkey-lost.md`](./owner-passkey-lost.md) | An Owner / Admin lost their passkey and / or recovery codes; one of three paths back to a working session. |
 | [`provisioning-workflow-stuck.md`](./provisioning-workflow-stuck.md) | A `ProvisionClusterWorkflow` is looping or stuck on a single activity. |
+| [`secrets-migration.md`](./secrets-migration.md) | Planned cutover (or rollback) of the tenant secret store from pgcrypto to Vault. **Stub** — Sprint 5 fills empirical sections during the live migration. |
 | [`sse-connection-leak.md`](./sse-connection-leak.md) | `/v1/clusters/:id/events` streams are not closing after their cluster's workflow terminates. |
 
 ## Conventions

@@ -5,6 +5,16 @@
 - **Deciders**: Founding team
 - **Tags**: security, secrets, platform
 
+> **Long-term plan implemented in [Sprint 4 ticket 02](../backlog/sprint-4/02-vault-migration.md).**
+> Sprint 4 ships the partial scope (`VaultStore` impl behind the
+> `SecretStore` trait, parity tests, Ansible role for the dogfood
+> Vault deploy, runbook stub at
+> [`docs/runbooks/secrets-migration.md`](../runbooks/secrets-migration.md)).
+> The migration binary, production cutover, and pgcrypto-extension
+> drop are explicitly Sprint 5+ work, gated on the dogfood cluster
+> existing. This ADR is **not** superseded — the Long term section
+> below is what the ticket implements.
+
 ## Context
 
 Kubinate holds three categories of secret material:
