@@ -219,9 +219,10 @@ Sprint 4+ tickets sized after M1–M3 are in:
 
 - Deploy single-node `victoria-metrics` via Ansible (extend
   `infra/ansible/`).
-- Wire the agent's reverse tunnel (separate Sprint 4 ticket) to
-  push remote-write through the proxy, which forwards to VM with
-  the tenant header.
+- Wire the agent's reverse tunnel (separate Sprint 4 ticket; wire
+  format ratified in [ADR-0014](../adr/0014-agent-reverse-tunnel-wire-format.md))
+  to push remote-write through the proxy, which forwards to VM
+  with the tenant header.
 - Write the S3 log scaffold (Parquet writer + Postgres index +
   range query).
 - Stand up Grafana with a per-org datasource that goes through
