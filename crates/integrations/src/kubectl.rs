@@ -82,11 +82,7 @@ impl KubectlCliExecutor {
         cmd
     }
 
-    async fn run(
-        &self,
-        mut cmd: Command,
-        ignore_not_found: bool,
-    ) -> Result<(), KubectlError> {
+    async fn run(&self, mut cmd: Command, ignore_not_found: bool) -> Result<(), KubectlError> {
         let result = tokio::time::timeout(self.command_timeout, cmd.output()).await;
         let output = match result {
             Ok(Ok(o)) => o,
@@ -106,9 +102,7 @@ impl KubectlCliExecutor {
         // `kubectl delete node` returns exit 1 + "NotFound" when the
         // node is already gone — that's our success path for the
         // re-run case.
-        if ignore_not_found
-            && (stderr.contains("NotFound") || stderr.contains("not found"))
-        {
+        if ignore_not_found && (stderr.contains("NotFound") || stderr.contains("not found")) {
             return Ok(());
         }
 

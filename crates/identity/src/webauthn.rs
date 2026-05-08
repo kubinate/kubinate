@@ -140,11 +140,10 @@ impl WebauthnConfig {
                 "KUBINATE_WEBAUTHN_RP_ID must not be empty".into(),
             ));
         }
-        let rp_name = std::env::var("KUBINATE_WEBAUTHN_RP_NAME")
-            .unwrap_or_else(|_| "Kubinate".to_string());
-        let origin_str = std::env::var("KUBINATE_WEBAUTHN_RP_ORIGIN").map_err(|_| {
-            WebauthnError::Config("KUBINATE_WEBAUTHN_RP_ORIGIN is required".into())
-        })?;
+        let rp_name =
+            std::env::var("KUBINATE_WEBAUTHN_RP_NAME").unwrap_or_else(|_| "Kubinate".to_string());
+        let origin_str = std::env::var("KUBINATE_WEBAUTHN_RP_ORIGIN")
+            .map_err(|_| WebauthnError::Config("KUBINATE_WEBAUTHN_RP_ORIGIN is required".into()))?;
         let rp_origin = Url::parse(&origin_str).map_err(|e| {
             WebauthnError::Config(format!("KUBINATE_WEBAUTHN_RP_ORIGIN invalid url: {e}"))
         })?;
@@ -290,7 +289,10 @@ impl Default for InMemoryCeremonyStore {
 #[async_trait]
 impl CeremonyStore for InMemoryCeremonyStore {
     async fn put(&self, row: CeremonyRow) -> Result<(), WebauthnError> {
-        self.inner.lock().expect("ceremony store poisoned").insert(row.id, row);
+        self.inner
+            .lock()
+            .expect("ceremony store poisoned")
+            .insert(row.id, row);
         Ok(())
     }
 
@@ -398,10 +400,7 @@ impl Ceremonies {
         user_email: &str,
         user_display_name: &str,
         excluded_credentials: Vec<webauthn_rs::prelude::CredentialID>,
-    ) -> Result<
-        (Uuid, webauthn_rs::prelude::CreationChallengeResponse),
-        WebauthnError,
-    > {
+    ) -> Result<(Uuid, webauthn_rs::prelude::CreationChallengeResponse), WebauthnError> {
         let (challenge, registration_state) = self
             .webauthn
             .start_passkey_registration(
@@ -472,10 +471,7 @@ impl Ceremonies {
         &self,
         user_id: Uuid,
         passkeys: &[WebauthnPasskey],
-    ) -> Result<
-        (Uuid, webauthn_rs::prelude::RequestChallengeResponse),
-        WebauthnError,
-    > {
+    ) -> Result<(Uuid, webauthn_rs::prelude::RequestChallengeResponse), WebauthnError> {
         if passkeys.is_empty() {
             return Err(WebauthnError::Rejected(
                 "user has no registered passkeys".into(),
@@ -550,8 +546,7 @@ impl Ceremonies {
 // --- private helpers --------------------------------------------------------
 
 fn serialize_registration_state(state: &PasskeyRegistration) -> Result<Vec<u8>, WebauthnError> {
-    serde_json::to_vec(state)
-        .map_err(|e| WebauthnError::Storage(PlatformError::Internal(e.into())))
+    serde_json::to_vec(state).map_err(|e| WebauthnError::Storage(PlatformError::Internal(e.into())))
 }
 
 fn deserialize_registration_state(bytes: &[u8]) -> Result<PasskeyRegistration, WebauthnError> {
@@ -559,16 +554,11 @@ fn deserialize_registration_state(bytes: &[u8]) -> Result<PasskeyRegistration, W
         .map_err(|e| WebauthnError::Storage(PlatformError::Internal(e.into())))
 }
 
-fn serialize_authentication_state(
-    state: &PasskeyAuthentication,
-) -> Result<Vec<u8>, WebauthnError> {
-    serde_json::to_vec(state)
-        .map_err(|e| WebauthnError::Storage(PlatformError::Internal(e.into())))
+fn serialize_authentication_state(state: &PasskeyAuthentication) -> Result<Vec<u8>, WebauthnError> {
+    serde_json::to_vec(state).map_err(|e| WebauthnError::Storage(PlatformError::Internal(e.into())))
 }
 
-fn deserialize_authentication_state(
-    bytes: &[u8],
-) -> Result<PasskeyAuthentication, WebauthnError> {
+fn deserialize_authentication_state(bytes: &[u8]) -> Result<PasskeyAuthentication, WebauthnError> {
     serde_json::from_slice(bytes)
         .map_err(|e| WebauthnError::Storage(PlatformError::Internal(e.into())))
 }
@@ -693,16 +683,10 @@ mod tests {
             .await
             .unwrap();
 
-        let first = store
-            .take(id, CeremonyKind::Registration)
-            .await
-            .unwrap();
+        let first = store.take(id, CeremonyKind::Registration).await.unwrap();
         assert!(first.is_some());
 
-        let second = store
-            .take(id, CeremonyKind::Registration)
-            .await
-            .unwrap();
+        let second = store.take(id, CeremonyKind::Registration).await.unwrap();
         assert!(second.is_none(), "second consume must return None");
     }
 

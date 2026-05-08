@@ -213,7 +213,10 @@ async fn vault_rejects_pgcrypto_rows(pool: PgPool) {
 
     let pg_store = PgcryptoStore::new(pool.clone(), fresh_kek()).expect("valid KEK");
     let handle = pg_store
-        .put(org_id, SecretString::from("written-by-pgcrypto".to_string()))
+        .put(
+            org_id,
+            SecretString::from("written-by-pgcrypto".to_string()),
+        )
         .await
         .expect("pgcrypto put");
 

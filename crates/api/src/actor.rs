@@ -330,12 +330,7 @@ where
         .bind(actor.organization_id)
         .fetch_optional(&app_state.db)
         .await
-        .map_err(|_| {
-            reject(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "role lookup failed",
-            )
-        })?;
+        .map_err(|_| reject(StatusCode::INTERNAL_SERVER_ERROR, "role lookup failed"))?;
         let role = role.map(|(r,)| r).ok_or_else(|| {
             reject(
                 StatusCode::FORBIDDEN,

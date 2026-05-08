@@ -375,10 +375,7 @@ pub struct ScaleInDeps {
 /// Drain → kubectl-delete → Hetzner-delete each target. Idempotent
 /// against re-runs: the kubectl wrapper treats `NotFound` as success
 /// and `hetzner_delete_server_idempotent` swallows 404.
-pub async fn scale_in(
-    deps: &ScaleInDeps,
-    input: ScaleInInput,
-) -> Result<(), ActivityError> {
+pub async fn scale_in(deps: &ScaleInDeps, input: ScaleInInput) -> Result<(), ActivityError> {
     deps.progress.step("draining_nodes").await;
     for t in &input.targets {
         kubectl_drain_node(&*deps.kubectl, &input.kubeconfig_path, &t.node_name).await?;

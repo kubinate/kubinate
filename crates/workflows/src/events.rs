@@ -156,7 +156,12 @@ mod tests {
         let mut rx_a = hub.subscribe(a);
         let mut rx_b = hub.subscribe(b);
 
-        hub.publish(a, ClusterEvent::Step { step: "for-a".into() });
+        hub.publish(
+            a,
+            ClusterEvent::Step {
+                step: "for-a".into(),
+            },
+        );
         let evt = rx_a.recv().await.unwrap();
         assert!(matches!(evt, ClusterEvent::Step { ref step } if step == "for-a"));
 

@@ -111,8 +111,7 @@ impl LocalRunner {
             _ => return,
         };
         let category = if matches!(status, ClusterStatus::Failed) {
-            kubinate_cluster::status::error_category(status, reason)
-                .map(|c| c.as_str().to_string())
+            kubinate_cluster::status::error_category(status, reason).map(|c| c.as_str().to_string())
         } else {
             None
         };
@@ -515,7 +514,10 @@ impl LocalRunner {
         };
         let join_token = self
             .ssh
-            .run(&join_target, "sudo cat /var/lib/rancher/k3s/server/node-token")
+            .run(
+                &join_target,
+                "sudo cat /var/lib/rancher/k3s/server/node-token",
+            )
             .await
             .map_err(|e| anyhow::anyhow!("read join token: {e}"))?;
         let join_token = join_token.trim().to_string();
@@ -675,8 +677,8 @@ impl LocalRunner {
             .cluster_service
             .fetch_kubeconfig(organization_id, cluster_id)
             .await?;
-        let kubeconfig_path = std::env::temp_dir()
-            .join(format!("kubinate-scale-in-{}.yaml", Uuid::now_v7()));
+        let kubeconfig_path =
+            std::env::temp_dir().join(format!("kubinate-scale-in-{}.yaml", Uuid::now_v7()));
         tokio::fs::write(&kubeconfig_path, kubeconfig.expose_secret())
             .await
             .map_err(|e| anyhow::anyhow!("stage kubeconfig: {e}"))?;

@@ -103,7 +103,9 @@ impl AgentService for ApiAgentService {
                     AgentPayload::Metrics(_) => {
                         // Sprint 5+: forward to the observability
                         // proxy. Today: log + drop.
-                        tracing::debug!("agent metrics_remote_write payload (drop until Sprint 5+)");
+                        tracing::debug!(
+                            "agent metrics_remote_write payload (drop until Sprint 5+)"
+                        );
                     }
                     AgentPayload::Assertion(_) => {
                         // Sprint 5+: forward to the WebAuthn
@@ -158,10 +160,7 @@ pub enum ListenerDecision {
 /// raw value of `KUBINATE_AGENT_TUNNEL_ADDR` (defaults to
 /// [`DEFAULT_AGENT_BIND_ADDR`] when `None`).
 #[must_use]
-pub fn decide_listener(
-    enabled: Option<&str>,
-    addr_override: Option<&str>,
-) -> ListenerDecision {
+pub fn decide_listener(enabled: Option<&str>, addr_override: Option<&str>) -> ListenerDecision {
     if enabled != Some("1") {
         return ListenerDecision::Disabled;
     }
@@ -257,9 +256,7 @@ mod tests {
     //! Sprint 4 partial scope explicitly defers mTLS to Sprint 5+.
 
     use super::*;
-    use kubinate_agent_proto::{
-        AgentPayload, AgentServiceClient, AgentToServer, Heartbeat,
-    };
+    use kubinate_agent_proto::{AgentPayload, AgentServiceClient, AgentToServer, Heartbeat};
     use tokio::sync::mpsc;
     use tokio_stream::wrappers::ReceiverStream;
     use tonic::transport::{Endpoint, Server, Uri};
@@ -280,7 +277,9 @@ mod tests {
         let channel = Endpoint::try_from("http://kubinate-api-loopback")
             .unwrap()
             .connect_with_connector(tower::service_fn(move |_: Uri| {
-                let io = client_io.take().expect("connect_with_connector called once");
+                let io = client_io
+                    .take()
+                    .expect("connect_with_connector called once");
                 async move { Ok::<_, std::io::Error>(hyper_util::rt::TokioIo::new(io)) }
             }))
             .await
@@ -306,14 +305,11 @@ mod tests {
         .await
         .expect("send heartbeat");
 
-        let ack_message = tokio::time::timeout(
-            std::time::Duration::from_secs(5),
-            inbound.next(),
-        )
-        .await
-        .expect("ack within 5s")
-        .expect("server sent a message")
-        .expect("message ok");
+        let ack_message = tokio::time::timeout(std::time::Duration::from_secs(5), inbound.next())
+            .await
+            .expect("ack within 5s")
+            .expect("server sent a message")
+            .expect("message ok");
 
         match ack_message.payload {
             Some(ServerPayload::HeartbeatAck(ack)) => {

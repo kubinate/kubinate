@@ -18,9 +18,6 @@ use axum::{
     Json, Router,
 };
 use futures::stream::{self, Stream};
-use kubinate_workflows::events::ClusterEvent;
-use std::{convert::Infallible, time::Duration as StdDuration};
-use tokio_stream::{wrappers::BroadcastStream, StreamExt};
 use kubinate_cluster::{
     model::{Cluster, NewCluster},
     service::{ALLOWED_REGIONS, ALLOWED_SERVER_TYPES},
@@ -28,12 +25,15 @@ use kubinate_cluster::{
 };
 use kubinate_integrations::hetzner::Client as HetznerClient;
 use kubinate_platform::{audit, error::PlatformError};
+use kubinate_workflows::events::ClusterEvent;
 use kubinate_workflows::workflows::ProvisionClusterInput;
 use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
+use std::{convert::Infallible, time::Duration as StdDuration};
 use time::{Duration, OffsetDateTime};
+use tokio_stream::{wrappers::BroadcastStream, StreamExt};
 use uuid::Uuid;
 
 use crate::{actor::Actor, audit_ctx, problem::ApiError, AppState};
@@ -295,7 +295,9 @@ async fn destroy(
         HetznerClient::new(state.secret_store.clone(), credential.secret_ref),
     );
 
-    state.runner.spawn_destroy(actor.organization_id, hetzner, id);
+    state
+        .runner
+        .spawn_destroy(actor.organization_id, hetzner, id);
 
     Ok(StatusCode::ACCEPTED)
 }

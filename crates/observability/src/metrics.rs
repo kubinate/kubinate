@@ -223,9 +223,7 @@ pub async fn handle_write(
             body: request.organization_id,
         });
     }
-    store
-        .ingest(actor_organization_id, request.samples)
-        .await
+    store.ingest(actor_organization_id, request.samples).await
 }
 
 /// Run a query scoped to the authenticated actor's tenant. The API
@@ -317,10 +315,7 @@ mod tests {
         .await
         .expect_err("must reject tenant mismatch");
         match err {
-            MetricsError::TenantMismatch {
-                actor: a,
-                body: b,
-            } => {
+            MetricsError::TenantMismatch { actor: a, body: b } => {
                 assert_eq!(a, actor);
                 assert_eq!(b, claimed);
             }

@@ -61,7 +61,10 @@ pub fn init() -> Result<(), MetricsInitError> {
 /// race.
 #[must_use]
 pub fn render() -> String {
-    HANDLE.get().map(PrometheusHandle::render).unwrap_or_default()
+    HANDLE
+        .get()
+        .map(PrometheusHandle::render)
+        .unwrap_or_default()
 }
 
 /// Metric name constants. Keeping these here (rather than scattered

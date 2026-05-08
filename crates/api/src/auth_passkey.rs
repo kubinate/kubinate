@@ -36,8 +36,7 @@ use axum::{
     Json, Router,
 };
 use kubinate_identity::{
-    recovery_codes as rc,
-    session,
+    recovery_codes as rc, session,
     webauthn::{Ceremonies, CompletedAssertion, CompletedRegistration, WebauthnError},
 };
 use kubinate_platform::error::PlatformError;
@@ -275,8 +274,8 @@ async fn assert_finish(
         )));
     }
 
-    let mut passkey =
-        kubinate_identity::webauthn::deserialize_passkey(&row.credential).map_err(webauthn_to_api)?;
+    let mut passkey = kubinate_identity::webauthn::deserialize_passkey(&row.credential)
+        .map_err(webauthn_to_api)?;
 
     let CompletedAssertion {
         passkey_row_id: _,
@@ -309,7 +308,9 @@ async fn assert_finish(
             .map_err(ApiError::from)?;
     }
 
-    Ok(Json(AssertFinishResponse { mfa_satisfied: true }))
+    Ok(Json(AssertFinishResponse {
+        mfa_satisfied: true,
+    }))
 }
 
 // --- inventory -------------------------------------------------------------
@@ -508,4 +509,3 @@ async fn recovery_redeem(
         remaining,
     }))
 }
-

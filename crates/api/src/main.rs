@@ -105,8 +105,7 @@ struct AppState {
     /// id and the user-supplied nickname for the new passkey.
     /// Bounded by the ceremony's 5-minute TTL; a periodic sweep is
     /// a follow-up if the row count ever matters at scale.
-    passkey_pending_nicknames:
-        Arc<std::sync::Mutex<std::collections::HashMap<uuid::Uuid, String>>>,
+    passkey_pending_nicknames: Arc<std::sync::Mutex<std::collections::HashMap<uuid::Uuid, String>>>,
 }
 
 /// Bootstrap configuration the runner needs to populate
@@ -149,12 +148,13 @@ async fn main() -> anyhow::Result<()> {
         .as_deref()
         .unwrap_or("pgcrypto")
     {
-        "pgcrypto" => Arc::new(
-            PgcryptoStore::from_env(pool.clone()).context("secret store init (pgcrypto)")?,
-        ),
+        "pgcrypto" => {
+            Arc::new(PgcryptoStore::from_env(pool.clone()).context("secret store init (pgcrypto)")?)
+        }
         "vault" => {
-            let transit = kubinate_platform::secrets::HttpVaultTransit::from_env()
-                .context("secret store init (vault) — KUBINATE_VAULT_ADDR + KUBINATE_VAULT_TOKEN required")?;
+            let transit = kubinate_platform::secrets::HttpVaultTransit::from_env().context(
+                "secret store init (vault) — KUBINATE_VAULT_ADDR + KUBINATE_VAULT_TOKEN required",
+            )?;
             let key_prefix = std::env::var("KUBINATE_VAULT_KEY_PREFIX")
                 .unwrap_or_else(|_| "kubinate".to_string());
             tracing::info!(prefix = %key_prefix, "secret store: vault transit engine");
@@ -165,9 +165,7 @@ async fn main() -> anyhow::Result<()> {
             ))
         }
         other => {
-            anyhow::bail!(
-                "KUBINATE_SECRETS_BACKEND must be 'pgcrypto' or 'vault'; got '{other}'"
-            );
+            anyhow::bail!("KUBINATE_SECRETS_BACKEND must be 'pgcrypto' or 'vault'; got '{other}'");
         }
     };
     let credential_repo = Arc::new(PgHetznerCredentialRepository::new(pool.clone()));
@@ -203,14 +201,11 @@ async fn main() -> anyhow::Result<()> {
     // `Ceremonies` facade if both required env vars are present.
     // Missing config is logged-and-skipped; the rest of the API
     // works unchanged and `auth_passkey` routes return 503.
-    let passkey_repo: Arc<dyn kubinate_identity::repository::PasskeyRepository> =
-        Arc::new(kubinate_identity::repository::PgPasskeyRepository::new(
-            pool.clone(),
-        ));
+    let passkey_repo: Arc<dyn kubinate_identity::repository::PasskeyRepository> = Arc::new(
+        kubinate_identity::repository::PgPasskeyRepository::new(pool.clone()),
+    );
     let recovery_codes_repo: Arc<dyn kubinate_identity::repository::RecoveryCodeRepository> =
-        Arc::new(kubinate_identity::repository::PgRecoveryCodeRepository::new(
-            pool.clone(),
-        ));
+        Arc::new(kubinate_identity::repository::PgRecoveryCodeRepository::new(pool.clone()));
     let ceremonies = match kubinate_identity::webauthn::WebauthnConfig::from_env_optional() {
         Ok(Some(cfg)) => {
             let store: Arc<dyn kubinate_identity::webauthn::CeremonyStore> = Arc::new(
@@ -445,7 +440,10 @@ async fn version() -> Json<Version> {
 /// gauges + counters land here without a route change.
 async fn metrics_endpoint() -> impl IntoResponse {
     (
-        [(axum::http::header::CONTENT_TYPE, "text/plain; version=0.0.4")],
+        [(
+            axum::http::header::CONTENT_TYPE,
+            "text/plain; version=0.0.4",
+        )],
         kubinate_platform::metrics::render(),
     )
 }

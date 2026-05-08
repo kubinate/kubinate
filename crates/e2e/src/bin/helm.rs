@@ -97,7 +97,10 @@ async fn main() -> anyhow::Result<()> {
     let args = parse_args()?;
 
     if !args.kubeconfig.exists() {
-        bail!("kubeconfig path does not exist: {}", args.kubeconfig.display());
+        bail!(
+            "kubeconfig path does not exist: {}",
+            args.kubeconfig.display()
+        );
     }
     let spec = catalog::lookup(&args.addon)
         .with_context(|| format!("addon {} is not in the catalog", args.addon))?;
@@ -144,7 +147,10 @@ async fn main() -> anyhow::Result<()> {
         "all pods reached Ready"
     );
 
-    println!("OK: addon {} v{} ready in {}", spec.slug, args.version, spec.namespace);
+    println!(
+        "OK: addon {} v{} ready in {}",
+        spec.slug, args.version, spec.namespace
+    );
     Ok(())
 }
 
@@ -203,10 +209,7 @@ async fn wait_for_pods_ready(
     Ok(())
 }
 
-async fn kubectl_pod_count(
-    kubeconfig: &std::path::Path,
-    namespace: &str,
-) -> anyhow::Result<usize> {
+async fn kubectl_pod_count(kubeconfig: &std::path::Path, namespace: &str) -> anyhow::Result<usize> {
     let mut cmd = tokio::process::Command::new("kubectl");
     cmd.env("KUBECONFIG", kubeconfig)
         .args([

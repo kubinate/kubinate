@@ -844,9 +844,7 @@ impl PasskeyRepository for PgPasskeyRepository {
         .map_err(|err| {
             if let sqlx::Error::Database(db_err) = &err {
                 if db_err.is_unique_violation() {
-                    return PlatformError::Conflict(
-                        "this passkey is already registered".into(),
-                    );
+                    return PlatformError::Conflict("this passkey is already registered".into());
                 }
             }
             PlatformError::Database(err)
@@ -994,11 +992,8 @@ pub trait RecoveryCodeRepository: Send + Sync {
     /// the code was live + consumed atomically; `Ok(false)` if no
     /// matching live code exists. Never returns `Ok(true)` more than
     /// once for the same hash.
-    async fn try_consume(
-        &self,
-        user_id: Uuid,
-        code_hash: &[u8; 32],
-    ) -> Result<bool, PlatformError>;
+    async fn try_consume(&self, user_id: Uuid, code_hash: &[u8; 32])
+        -> Result<bool, PlatformError>;
 
     /// Count of remaining unused codes. The UI shows this on the
     /// security settings page so a user knows when to regenerate.

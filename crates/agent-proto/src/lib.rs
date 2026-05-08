@@ -38,9 +38,7 @@ pub mod v1 {
 pub use v1::agent_service_client::AgentServiceClient;
 pub use v1::agent_service_server::{AgentService, AgentServiceServer};
 pub use v1::{
-    agent_to_server::Payload as AgentPayload,
-    command::Kind as CommandKind,
-    server_to_agent::Payload as ServerPayload,
-    AgentToServer, AssertionResult, Command, GracefulRestart, Heartbeat, HeartbeatAck,
-    MetricsRemoteWrite, ServerToAgent,
+    agent_to_server::Payload as AgentPayload, command::Kind as CommandKind,
+    server_to_agent::Payload as ServerPayload, AgentToServer, AssertionResult, Command,
+    GracefulRestart, Heartbeat, HeartbeatAck, MetricsRemoteWrite, ServerToAgent,
 };

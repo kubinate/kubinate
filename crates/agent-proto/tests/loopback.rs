@@ -96,7 +96,9 @@ async fn heartbeat_round_trips_through_open_stream() {
     let channel = Endpoint::try_from("http://kubinate-agent-loopback")
         .unwrap()
         .connect_with_connector(tower::service_fn(move |_: Uri| {
-            let io = client_io.take().expect("connect_with_connector called once");
+            let io = client_io
+                .take()
+                .expect("connect_with_connector called once");
             async move { Ok::<_, std::io::Error>(hyper_util::rt::TokioIo::new(io)) }
         }))
         .await
@@ -107,10 +109,7 @@ async fn heartbeat_round_trips_through_open_stream() {
     let (tx, rx) = tokio::sync::mpsc::channel::<AgentToServer>(8);
     let outbound = ReceiverStream::new(rx);
 
-    let response_stream = client
-        .open_stream(outbound)
-        .await
-        .expect("open_stream");
+    let response_stream = client.open_stream(outbound).await.expect("open_stream");
     let mut inbound = response_stream.into_inner();
 
     tx.send(AgentToServer {
@@ -124,14 +123,11 @@ async fn heartbeat_round_trips_through_open_stream() {
     .await
     .expect("send heartbeat");
 
-    let ack_message = tokio::time::timeout(
-        std::time::Duration::from_secs(5),
-        inbound.next(),
-    )
-    .await
-    .expect("ack within 5s")
-    .expect("server sent a message")
-    .expect("message ok");
+    let ack_message = tokio::time::timeout(std::time::Duration::from_secs(5), inbound.next())
+        .await
+        .expect("ack within 5s")
+        .expect("server sent a message")
+        .expect("message ok");
 
     match ack_message.payload {
         Some(ServerPayload::HeartbeatAck(ack)) => {

@@ -11,13 +11,7 @@
 //!     attacker cannot fish for cross-tenant data even if they
 //!     guess another tenant's UUID.
 
-use axum::{
-    extract::State,
-    http::StatusCode,
-    response::IntoResponse,
-    routing::post,
-    Json, Router,
-};
+use axum::{extract::State, http::StatusCode, response::IntoResponse, routing::post, Json, Router};
 use kubinate_observability::metrics::{
     handle_query, handle_write, MetricsError, RangeQuery, Sample, WriteRequest,
 };
@@ -43,10 +37,9 @@ async fn write(
     actor: Actor,
     Json(body): Json<WriteRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let accepted =
-        handle_write(&state.metrics_store, actor.organization_id, body)
-            .await
-            .map_err(metrics_error_to_api)?;
+    let accepted = handle_write(&state.metrics_store, actor.organization_id, body)
+        .await
+        .map_err(metrics_error_to_api)?;
     Ok((StatusCode::ACCEPTED, Json(WriteResponse { accepted })))
 }
 

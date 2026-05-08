@@ -318,18 +318,10 @@ pub trait VaultTransit: Send + Sync {
 
     /// Encrypt plaintext under the named key. Returns the
     /// `vault:vN:...` envelope string Vault hands back.
-    async fn encrypt(
-        &self,
-        key_name: &str,
-        plaintext: &str,
-    ) -> Result<String, SecretError>;
+    async fn encrypt(&self, key_name: &str, plaintext: &str) -> Result<String, SecretError>;
 
     /// Decrypt a `vault:vN:...` envelope back to plaintext.
-    async fn decrypt(
-        &self,
-        key_name: &str,
-        ciphertext: &str,
-    ) -> Result<String, SecretError>;
+    async fn decrypt(&self, key_name: &str, ciphertext: &str) -> Result<String, SecretError>;
 }
 
 /// In-memory [`VaultTransit`] for tests. Keys + plaintext live in a
@@ -383,11 +375,7 @@ impl VaultTransit for InMemoryVaultTransit {
         Ok(())
     }
 
-    async fn encrypt(
-        &self,
-        key_name: &str,
-        plaintext: &str,
-    ) -> Result<String, SecretError> {
+    async fn encrypt(&self, key_name: &str, plaintext: &str) -> Result<String, SecretError> {
         let mut g = self.inner.lock().expect("vault transit fake poisoned");
         if !g.keys.contains(key_name) {
             return Err(SecretError::InvalidKek(format!(
@@ -396,16 +384,14 @@ impl VaultTransit for InMemoryVaultTransit {
         }
         g.counter += 1;
         let ciphertext = format!("vault:test:{:016x}", g.counter);
-        g.ciphertexts
-            .insert((key_name.to_string(), ciphertext.clone()), plaintext.to_string());
+        g.ciphertexts.insert(
+            (key_name.to_string(), ciphertext.clone()),
+            plaintext.to_string(),
+        );
         Ok(ciphertext)
     }
 
-    async fn decrypt(
-        &self,
-        key_name: &str,
-        ciphertext: &str,
-    ) -> Result<String, SecretError> {
+    async fn decrypt(&self, key_name: &str, ciphertext: &str) -> Result<String, SecretError> {
         let g = self.inner.lock().expect("vault transit fake poisoned");
         if !g.keys.contains(key_name) {
             return Err(SecretError::InvalidKek(format!(
@@ -515,12 +501,11 @@ impl<T: VaultTransit> SecretStore for VaultStore<T> {
             .execute(&mut *tx)
             .await?;
 
-        let row: Option<(Vec<u8>, String)> = sqlx::query_as(
-            "SELECT ciphertext, algorithm FROM secrets WHERE id = $1",
-        )
-        .bind(handle.id)
-        .fetch_optional(&mut *tx)
-        .await?;
+        let row: Option<(Vec<u8>, String)> =
+            sqlx::query_as("SELECT ciphertext, algorithm FROM secrets WHERE id = $1")
+                .bind(handle.id)
+                .fetch_optional(&mut *tx)
+                .await?;
         tx.commit().await?;
 
         let Some((ciphertext_bytes, algorithm)) = row else {
@@ -533,8 +518,8 @@ impl<T: VaultTransit> SecretStore for VaultStore<T> {
             // would for a tampered ciphertext.
             return Err(SecretError::Decrypt);
         }
-        let ciphertext_str = std::str::from_utf8(&ciphertext_bytes)
-            .map_err(|_| SecretError::Decrypt)?;
+        let ciphertext_str =
+            std::str::from_utf8(&ciphertext_bytes).map_err(|_| SecretError::Decrypt)?;
 
         let key_name = vault_key_name(&self.key_prefix, handle.organization_id);
         let plaintext = self.transit.decrypt(&key_name, ciphertext_str).await?;
@@ -716,11 +701,7 @@ impl VaultTransit for HttpVaultTransit {
         Err(vault_status_to_error(status, "ensure_key"))
     }
 
-    async fn encrypt(
-        &self,
-        key_name: &str,
-        plaintext: &str,
-    ) -> Result<String, SecretError> {
+    async fn encrypt(&self, key_name: &str, plaintext: &str) -> Result<String, SecretError> {
         use base64::{engine::general_purpose::STANDARD as B64, Engine};
         let url = self.url_for(&format!("encrypt/{key_name}"))?;
         let body = VaultEncryptRequest {
@@ -750,11 +731,7 @@ impl VaultTransit for HttpVaultTransit {
         Ok(parsed.data.ciphertext)
     }
 
-    async fn decrypt(
-        &self,
-        key_name: &str,
-        ciphertext: &str,
-    ) -> Result<String, SecretError> {
+    async fn decrypt(&self, key_name: &str, ciphertext: &str) -> Result<String, SecretError> {
         use base64::{engine::general_purpose::STANDARD as B64, Engine};
         let url = self.url_for(&format!("decrypt/{key_name}"))?;
         let body = VaultDecryptRequest { ciphertext };
@@ -781,10 +758,8 @@ impl VaultTransit for HttpVaultTransit {
             }
             return Err(vault_status_to_error(status, "decrypt"));
         }
-        let parsed: VaultDecryptResponse = response
-            .json()
-            .await
-            .map_err(|_| SecretError::Decrypt)?;
+        let parsed: VaultDecryptResponse =
+            response.json().await.map_err(|_| SecretError::Decrypt)?;
         let plaintext_bytes = B64
             .decode(parsed.data.plaintext.as_bytes())
             .map_err(|_| SecretError::Decrypt)?;
