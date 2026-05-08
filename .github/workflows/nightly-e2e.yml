@@ -104,33 +104,20 @@ jobs:
       # (e.g. panic, OOM), list every server tagged with our nightly
       # marker label and force-delete. Belt + suspenders for the
       # "never lives more than 60 minutes" DoD row.
+      #
+      # Sweep logic lives in `scripts/hetzner-orphan-sweep.py` rather
+      # than embedded here because GitHub's YAML validator stricter-
+      # parses workflow files and chokes on heredoc-quoted Python
+      # with escape characters.
       - name: Force-destroy any orphaned test servers
         if: always()
         env:
           HCLOUD_TOKEN: ${{ secrets.HETZNER_TEST_TOKEN }}
         run: |
           set -e
-          # We tag every server with kubinate.idempotency_key=<cluster_id>;
-          # sweeping by the namespace label keeps this safe even if the
-          # specific cluster id was lost.
           curl -sS -H "Authorization: Bearer $HCLOUD_TOKEN" \
             "https://api.hetzner.cloud/v1/servers?label_selector=kubinate.idempotency_key" \
-            | python3 -c '
-import json, sys, os, urllib.request
-data = json.load(sys.stdin)
-token = os.environ["HCLOUD_TOKEN"]
-for srv in data.get("servers", []):
-    print(f"force-deleting orphan {srv[\"id\"]} ({srv[\"name\"]})")
-    req = urllib.request.Request(
-        f"https://api.hetzner.cloud/v1/servers/{srv[\"id\"]}",
-        method="DELETE",
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    try:
-        urllib.request.urlopen(req).read()
-    except Exception as e:
-        print(f"  delete failed: {e}", file=sys.stderr)
-'
+            | python3 scripts/hetzner-orphan-sweep.py
 
       - name: Open GitHub issue on failure
         if: steps.e2e.outcome == 'failure'
@@ -148,7 +135,7 @@ for srv in data.get("servers", []):
           set -e
           # Tail the log and redact the Hetzner token if it ever leaked
           # in. The token comes through env so we substitute via shell,
-          # not via a templated `${{ }}` inside `run:`.
+          # not via a templated GitHub-Actions expression inside `run:`.
           tail -n 50 e2e.log \
             | sed "s|$HETZNER_TOKEN|<redacted>|g" \
             > excerpt.log

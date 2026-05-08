@@ -28,7 +28,7 @@ name: ci-helm
 on:
   pull_request:
     types: [labeled, synchronize]
-    branches: [main]
+    branches: [master]
   workflow_dispatch:
     inputs:
       reason:
