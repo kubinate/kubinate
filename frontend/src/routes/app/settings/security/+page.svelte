@@ -263,12 +263,7 @@
     <h2>Verify your identity</h2>
     <p>Your role requires a passkey check before we let you continue.</p>
     <div class="mfa-actions">
-      <button
-        type="button"
-        onclick={assert}
-        disabled={assertInFlight}
-        data-testid="assert-button"
-      >
+      <button type="button" onclick={assert} disabled={assertInFlight} data-testid="assert-button">
         {assertInFlight ? 'Verifying…' : 'Verify with passkey'}
       </button>
       <button
@@ -401,17 +396,10 @@
 {/if}
 
 {#if recoveryModalOpen && recoveryCodes}
-  <div
-    class="modal-backdrop"
-    role="dialog"
-    aria-modal="true"
-    data-testid="recovery-modal"
-  >
+  <div class="modal-backdrop" role="dialog" aria-modal="true" data-testid="recovery-modal">
     <div class="modal">
       <h3>Save your recovery codes</h3>
-      <p>
-        These codes will not be shown again. Save them in your password manager now.
-      </p>
+      <p>These codes will not be shown again. Save them in your password manager now.</p>
       <pre data-testid="recovery-codes-list">{recoveryCodes.join('\n')}</pre>
       {#if recoveryError}
         <p class="error" role="alert">{recoveryError}</p>
@@ -446,9 +434,7 @@
         <p class="error" role="alert">{redeemError}</p>
       {/if}
       <div class="modal-actions">
-        <button type="button" onclick={closeRedeemModal} disabled={redeemInFlight}>
-          Cancel
-        </button>
+        <button type="button" onclick={closeRedeemModal} disabled={redeemInFlight}> Cancel </button>
         <button
           type="button"
           onclick={confirmRedeem}

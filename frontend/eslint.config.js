@@ -12,7 +12,23 @@ export default [
   ...svelte.configs['flat/prettier'],
   {
     languageOptions: {
-      globals: { ...globals.browser, ...globals.node }
+      globals: {
+        ...globals.browser,
+        ...globals.node,
+        // WebAuthn DOM types live in `lib.dom.d.ts` and TypeScript
+        // sees them through tsconfig, but eslint's `no-undef` rule
+        // doesn't. The casts in `src/lib/api/passkey.ts` and
+        // `src/routes/app/settings/security/+page.svelte` need
+        // these to lint clean.
+        PublicKeyCredential: 'readonly',
+        PublicKeyCredentialType: 'readonly',
+        PublicKeyCredentialCreationOptions: 'readonly',
+        PublicKeyCredentialRequestOptions: 'readonly',
+        AuthenticatorAttestationResponse: 'readonly',
+        AuthenticatorAssertionResponse: 'readonly',
+        CredentialCreationOptions: 'readonly',
+        CredentialRequestOptions: 'readonly'
+      }
     }
   },
   {

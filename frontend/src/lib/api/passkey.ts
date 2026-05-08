@@ -17,10 +17,7 @@
  * [`credentialToJson`].
  */
 
-import {
-  ApiError,
-  parseProblem
-} from './_problem';
+import { ApiError, parseProblem } from './_problem';
 import {
   assertFinishResponseSchema,
   assertStartResponseSchema,
@@ -74,9 +71,7 @@ export async function finishRegister(
 
 // --- assertion (partial-MFA-session promotion) ----------------------------
 
-export async function startAssert(
-  fetchImpl: typeof fetch = fetch
-): Promise<AssertStartResponse> {
+export async function startAssert(fetchImpl: typeof fetch = fetch): Promise<AssertStartResponse> {
   const r = await fetchImpl('/api/v1/auth/passkey/assert/start', {
     method: 'POST'
   });
@@ -98,17 +93,12 @@ export async function finishAssert(
 
 // --- inventory --------------------------------------------------------------
 
-export async function listPasskeys(
-  fetchImpl: typeof fetch = fetch
-): Promise<PasskeyView[]> {
+export async function listPasskeys(fetchImpl: typeof fetch = fetch): Promise<PasskeyView[]> {
   const r = await fetchImpl('/api/v1/auth/passkey/list');
   return parseOrThrow(r, z.array(passkeyViewSchema));
 }
 
-export async function revokePasskey(
-  id: string,
-  fetchImpl: typeof fetch = fetch
-): Promise<void> {
+export async function revokePasskey(id: string, fetchImpl: typeof fetch = fetch): Promise<void> {
   const r = await fetchImpl(`/api/v1/auth/passkey/${id}`, { method: 'DELETE' });
   if (!r.ok) {
     throw await parseProblem(r);
@@ -173,9 +163,7 @@ function bufferToBase64Url(input: ArrayBuffer): string {
  * only touch the fields whose values are encoded as Base64URL in
  * the JSON form.
  */
-export function webauthnJsonToCreate(
-  json: unknown
-): CredentialCreationOptions {
+export function webauthnJsonToCreate(json: unknown): CredentialCreationOptions {
   const opts = json as {
     publicKey: {
       challenge: string;

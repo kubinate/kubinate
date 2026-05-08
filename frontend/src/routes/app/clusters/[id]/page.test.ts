@@ -284,7 +284,11 @@ describe('cluster status page — SSE wiring (ticket 10)', () => {
     let status = 'provisioning';
     installFetch(async (url) => {
       if (url.endsWith(`/v1/clusters/${CLUSTER_ID}`))
-        return fakeResponse({ ...provisioningCluster(), status, terminal: status !== 'provisioning' });
+        return fakeResponse({
+          ...provisioningCluster(),
+          status,
+          terminal: status !== 'provisioning'
+        });
       if (url.endsWith(`/v1/clusters/${CLUSTER_ID}/addons`)) return fakeResponse([]);
       if (url.endsWith('/v1/catalog/clusters'))
         return fakeResponse({
@@ -315,8 +319,7 @@ describe('cluster status page — SSE wiring (ticket 10)', () => {
       const calls: string[] = [];
       installFetch(async (url) => {
         calls.push(url);
-        if (url.endsWith(`/v1/clusters/${CLUSTER_ID}`))
-          return fakeResponse(provisioningCluster());
+        if (url.endsWith(`/v1/clusters/${CLUSTER_ID}`)) return fakeResponse(provisioningCluster());
         if (url.endsWith(`/v1/clusters/${CLUSTER_ID}/addons`)) return fakeResponse([]);
         if (url.endsWith('/v1/catalog/clusters'))
           return fakeResponse({
@@ -341,13 +344,9 @@ describe('cluster status page — SSE wiring (ticket 10)', () => {
 
       // After the fourth failure the page is in polling mode. Drive
       // the poll interval and assert another GET fires.
-      const beforePollCount = calls.filter((u) =>
-        u.endsWith(`/v1/clusters/${CLUSTER_ID}`)
-      ).length;
+      const beforePollCount = calls.filter((u) => u.endsWith(`/v1/clusters/${CLUSTER_ID}`)).length;
       await vi.advanceTimersByTimeAsync(2_500);
-      const afterPollCount = calls.filter((u) =>
-        u.endsWith(`/v1/clusters/${CLUSTER_ID}`)
-      ).length;
+      const afterPollCount = calls.filter((u) => u.endsWith(`/v1/clusters/${CLUSTER_ID}`)).length;
       expect(afterPollCount).toBeGreaterThan(beforePollCount);
     } finally {
       vi.useRealTimers();

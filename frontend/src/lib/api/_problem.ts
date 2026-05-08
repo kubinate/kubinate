@@ -49,10 +49,7 @@ export class ApiError extends Error {
  * Caller already has the response body? Pass it in via `text` to
  * avoid double-consuming the stream.
  */
-export async function parseProblem(
-  response: Response,
-  text?: string
-): Promise<ApiError> {
+export async function parseProblem(response: Response, text?: string): Promise<ApiError> {
   const body = text ?? (await response.text());
   if (body) {
     try {

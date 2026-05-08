@@ -165,14 +165,10 @@ describe('settings/security — passkey list', () => {
 
     await waitFor(() => {
       expect(
-        calls.some(
-          (c) => c.method === 'POST' && c.url.endsWith('/v1/auth/passkey/register/start')
-        )
+        calls.some((c) => c.method === 'POST' && c.url.endsWith('/v1/auth/passkey/register/start'))
       ).toBe(true);
       expect(
-        calls.some(
-          (c) => c.method === 'POST' && c.url.endsWith('/v1/auth/passkey/register/finish')
-        )
+        calls.some((c) => c.method === 'POST' && c.url.endsWith('/v1/auth/passkey/register/finish'))
       ).toBe(true);
       // After register/finish the page refreshes the list.
       expect(listCalls).toBeGreaterThanOrEqual(2);
@@ -197,9 +193,7 @@ describe('settings/security — passkey list', () => {
     await waitFor(() => {
       expect(
         calls.some(
-          (c) =>
-            c.method === 'DELETE' &&
-            c.url.endsWith(`/v1/auth/passkey/${PASSKEY_A.id}`)
+          (c) => c.method === 'DELETE' && c.url.endsWith(`/v1/auth/passkey/${PASSKEY_A.id}`)
         )
       ).toBe(true);
     });
@@ -211,10 +205,7 @@ describe('settings/security — recovery codes', () => {
     installFetch(async (url, init) => {
       const method = (init?.method ?? 'GET').toUpperCase();
       if (url.endsWith('/v1/auth/passkey/list')) return fakeResponse([]);
-      if (
-        url.endsWith('/v1/auth/recovery-codes/regenerate') &&
-        method === 'POST'
-      ) {
+      if (url.endsWith('/v1/auth/recovery-codes/regenerate') && method === 'POST') {
         return fakeResponse({
           codes: ['AB12C-D3E4F', 'XY56Z-W7V8U'],
           total: 2
@@ -260,10 +251,7 @@ describe('settings/security — MFA required mode', () => {
     installFetch(async (url, init) => {
       const method = (init?.method ?? 'GET').toUpperCase();
       if (url.endsWith('/v1/auth/passkey/list')) return fakeResponse([]);
-      if (
-        url.endsWith('/v1/auth/recovery-codes/redeem') &&
-        method === 'POST'
-      ) {
+      if (url.endsWith('/v1/auth/recovery-codes/redeem') && method === 'POST') {
         // Match the Rust API's actual Problem Details shape.
         return new Response(
           JSON.stringify({

@@ -182,10 +182,7 @@
     }
     // Exponential backoff with a 60s ceiling. Reset on a successful
     // `connected` event.
-    const delay = Math.min(
-      SSE_BACKOFF_INITIAL_MS * 2 ** (sseRetries - 1),
-      SSE_BACKOFF_MAX_MS
-    );
+    const delay = Math.min(SSE_BACKOFF_INITIAL_MS * 2 ** (sseRetries - 1), SSE_BACKOFF_MAX_MS);
     reconnectHandle = setTimeout(openEventSource, delay);
   }
 
