@@ -269,7 +269,7 @@ describe('settings/security — MFA required mode', () => {
       return fakeResponse({}, 404);
     });
 
-    const { findByTestId, container } = render(StatusPage);
+    const { findByTestId } = render(StatusPage);
 
     await fireEvent.click(await findByTestId('recovery-redeem-link'));
     const codeInput = (await findByTestId('recovery-code-input')) as HTMLInputElement;
@@ -278,9 +278,9 @@ describe('settings/security — MFA required mode', () => {
     await fireEvent.click(await findByTestId('recovery-redeem-confirm'));
 
     await waitFor(() => {
-      // Page renders ApiError as `${title}: ${detail}` via describe();
-      // assert against the substring the runbook copy promises.
-      expect(container.textContent ?? '').toContain('invalid or already used');
+      // The redeem dialog renders in a shadcn portal (outside `container`),
+      // so check document.body which includes portal-rendered nodes.
+      expect(document.body.textContent ?? '').toContain('invalid or already used');
     });
   });
 });
