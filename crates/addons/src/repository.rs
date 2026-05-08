@@ -68,7 +68,7 @@ impl AddonRepository for PgAddonRepository {
     ) -> Result<ClusterAddon, PlatformError> {
         let mut tx = self.pool.begin().await?;
         set_tenant(&mut tx, organization_id).await?;
-        audit.apply(&mut *tx).await?;
+        audit.apply(&mut tx).await?;
 
         // Idempotency: a re-POST returns the existing row instead of
         // colliding on the unique-among-live index. We can't use
@@ -147,7 +147,7 @@ impl AddonRepository for PgAddonRepository {
     ) -> Result<(), PlatformError> {
         let mut tx = self.pool.begin().await?;
         set_tenant(&mut tx, organization_id).await?;
-        audit.apply(&mut *tx).await?;
+        audit.apply(&mut tx).await?;
         sqlx::query("UPDATE cluster_addons SET status = $2, status_reason = $3 WHERE id = $1")
             .bind(id)
             .bind(status)
@@ -171,6 +171,7 @@ async fn set_tenant(
     Ok(())
 }
 
+#[allow(clippy::needless_pass_by_value)]
 fn row_to_addon(row: sqlx::postgres::PgRow) -> ClusterAddon {
     ClusterAddon {
         id: row.get("id"),

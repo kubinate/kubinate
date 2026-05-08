@@ -74,6 +74,9 @@ pub struct HttpGithubClient {
 
 impl HttpGithubClient {
     /// Build a client from the OAuth app's credentials.
+    ///
+    /// # Panics
+    /// Panics if `reqwest::Client::build` fails (unreachable in practice).
     #[must_use]
     pub fn new(client_id: String, client_secret: SecretString) -> Self {
         let http = reqwest::Client::builder()

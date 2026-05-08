@@ -84,6 +84,9 @@ pub struct ProvisionDeps {
 
 /// Happy-path provisioning. Compensation (server delete on failure)
 /// lives with ticket 05's `DestroyClusterWorkflow`.
+///
+/// # Errors
+/// Returns [`ActivityError`] if any activity step fails.
 pub async fn provision_cluster(
     deps: &ProvisionDeps,
     input: ProvisionClusterInput,
@@ -209,6 +212,9 @@ pub struct DestroyDeps {
 /// The cluster row's soft-delete and the kubeconfig-secret deletion
 /// happen in the orchestrating service (so a Temporal replay of just
 /// the Hetzner-delete steps stays deterministic).
+///
+/// # Errors
+/// Returns [`ActivityError`] if a Hetzner delete call fails with a non-404 status.
 pub async fn destroy_cluster(
     deps: &DestroyDeps,
     input: DestroyClusterInput,
@@ -242,6 +248,9 @@ pub struct InstallAddonDeps {
 /// Sprint 2 ticket 07. Linear `helm upgrade --install` against the
 /// cluster's kubeconfig. Idempotent at the Helm level — re-runs
 /// converge to the requested state.
+///
+/// # Errors
+/// Returns [`ActivityError`] if the helm call fails.
 pub async fn install_addon(
     deps: &InstallAddonDeps,
     input: InstallAddonInput,
@@ -293,6 +302,9 @@ pub struct ScaleOutOutput {
 /// Add N worker nodes to an existing cluster. Sequential to keep
 /// the join path serialised (k3s agent join is sensitive to control-
 /// plane load).
+///
+/// # Errors
+/// Returns [`ActivityError`] if any activity step fails.
 pub async fn scale_out(
     deps: &ProvisionDeps,
     input: ScaleOutInput,
@@ -375,6 +387,9 @@ pub struct ScaleInDeps {
 /// Drain → kubectl-delete → Hetzner-delete each target. Idempotent
 /// against re-runs: the kubectl wrapper treats `NotFound` as success
 /// and `hetzner_delete_server_idempotent` swallows 404.
+///
+/// # Errors
+/// Returns [`ActivityError`] if any drain, delete-node, or Hetzner delete step fails.
 pub async fn scale_in(deps: &ScaleInDeps, input: ScaleInInput) -> Result<(), ActivityError> {
     deps.progress.step("draining_nodes").await;
     for t in &input.targets {

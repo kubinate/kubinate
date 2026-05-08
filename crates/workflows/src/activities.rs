@@ -59,11 +59,11 @@ impl ActivityError {
     #[must_use]
     pub fn is_retryable(&self) -> bool {
         match self {
-            ActivityError::Hetzner(HetznerError::Transport(_)) => true,
+            ActivityError::Hetzner(HetznerError::Transport(_))
+            | ActivityError::Ssh(SshError::Connect(_) | SshError::Transport(_)) => true,
             ActivityError::Hetzner(HetznerError::Status { status, .. }) => {
                 matches!(*status, 408 | 425 | 429 | 500 | 502 | 503 | 504)
             }
-            ActivityError::Ssh(SshError::Connect(_) | SshError::Transport(_)) => true,
             _ => false,
         }
     }
@@ -82,6 +82,9 @@ pub const CLOUD_INIT_POLL_INTERVAL: Duration = Duration::from_secs(5);
 /// to be re-runnable on a partially-destroyed cluster (ticket 05 AC).
 /// Other errors (network, 5xx, auth) propagate so retry / alerting
 /// can fire normally.
+///
+/// # Errors
+/// Returns [`ActivityError`] if the Hetzner API call fails with a non-404 status.
 pub async fn hetzner_delete_server_idempotent(
     provider: &dyn HetznerProvider,
     id: kubinate_integrations::hetzner::ServerId,
@@ -97,6 +100,9 @@ pub async fn hetzner_delete_server_idempotent(
 }
 
 /// ADR-0003 activity #1. Create a Hetzner Cloud server.
+///
+/// # Errors
+/// Returns [`ActivityError`] if the Hetzner API call fails.
 pub async fn hetzner_create_server(
     provider: &dyn HetznerProvider,
     params: CreateServerParams,
@@ -116,6 +122,10 @@ pub async fn hetzner_create_server(
 /// Uses a fixed-interval poll loop rather than backoff: cloud-init
 /// takes a fairly predictable amount of time and we want the common
 /// case to finish quickly once it's done.
+///
+/// # Errors
+/// Returns [`ActivityError`] if the server reports a failed status or the
+/// poll limit is exhausted before cloud-init finishes.
 pub async fn wait_for_cloud_init(
     provider: &dyn HetznerProvider,
     server_id: ServerId,
@@ -151,6 +161,9 @@ pub async fn wait_for_cloud_init(
 /// shell pipeline (per ADR-0003). The returned token is already
 /// narrowed to the `K10...` prefix; the caller is responsible for
 /// treating it as a [`secrecy::SecretString`] beyond this point.
+///
+/// # Errors
+/// Returns [`ActivityError`] if the SSH command fails.
 pub async fn ssh_install_k3s_server(
     ssh: &dyn SshExecutor,
     target: SshTarget,
@@ -172,6 +185,9 @@ pub async fn ssh_install_k3s_server(
 
 /// ADR-0003 activity #4. Join a freshly booted server as a k3s agent
 /// pointing at the existing control plane.
+///
+/// # Errors
+/// Returns [`ActivityError`] if the SSH command fails.
 pub async fn ssh_install_k3s_agent(
     ssh: &dyn SshExecutor,
     worker: SshTarget,
@@ -192,6 +208,9 @@ pub async fn ssh_install_k3s_agent(
 /// ADR-0003 activity #5. Collect the kubeconfig from the control
 /// plane once everything is joined. The returned string is caller's
 /// responsibility to encrypt + store (ticket 04).
+///
+/// # Errors
+/// Returns [`ActivityError`] if the SSH command fails.
 pub async fn collect_kubeconfig(
     ssh: &dyn SshExecutor,
     control_plane: SshTarget,
@@ -208,6 +227,9 @@ pub async fn collect_kubeconfig(
 /// Sprint 3 ticket 08. Drain a worker node ahead of deletion.
 /// Idempotent — the kubectl wrapper treats `NotFound` as success so a
 /// re-run after a partial scale-in completes cleanly.
+///
+/// # Errors
+/// Returns [`ActivityError`] if the kubectl call fails.
 pub async fn kubectl_drain_node(
     kubectl: &dyn KubectlExecutor,
     kubeconfig_path: &std::path::Path,
@@ -221,6 +243,9 @@ pub async fn kubectl_drain_node(
 /// Sprint 3 ticket 08. Delete a worker node from the API server. Runs
 /// after `kubectl_drain_node` and before the Hetzner-side delete so
 /// kube-state stays consistent with infrastructure.
+///
+/// # Errors
+/// Returns [`ActivityError`] if the kubectl call fails.
 pub async fn kubectl_delete_node(
     kubectl: &dyn KubectlExecutor,
     kubeconfig_path: &std::path::Path,
@@ -233,6 +258,9 @@ pub async fn kubectl_delete_node(
 
 /// Sprint 2 ticket 07. Run `helm upgrade --install` against the
 /// cluster's kubeconfig with the catalog-derived `InstallParams`.
+///
+/// # Errors
+/// Returns [`ActivityError`] if the helm call fails.
 pub async fn helm_install_chart(
     helm: &dyn HelmExecutor,
     kubeconfig_path: &std::path::Path,

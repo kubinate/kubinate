@@ -127,6 +127,10 @@ impl LocalRunner {
     /// Synchronously execute a provisioning run. Use when the caller
     /// wants to await the result (e.g. the nightly E2E harness). The
     /// API edge prefers the spawn variant.
+    ///
+    /// # Errors
+    /// Returns an error if provisioning fails at any activity step or if
+    /// the database queries fail.
     pub async fn run_provision(
         &self,
         organization_id: Uuid,
@@ -258,6 +262,10 @@ impl LocalRunner {
 
     /// Synchronously execute a destroy run. Idempotent against
     /// partially-destroyed clusters (ticket 05 ACs).
+    ///
+    /// # Errors
+    /// Returns an error if the destroy workflow fails or if the database
+    /// queries fail.
     pub async fn run_destroy(
         &self,
         organization_id: Uuid,
@@ -354,6 +362,10 @@ impl LocalRunner {
     /// is responsible for resolving the cluster's kubeconfig path
     /// (the API materialises it from the secret store right before
     /// invoking).
+    ///
+    /// # Errors
+    /// Returns an error if the Helm install fails or if the database
+    /// queries fail.
     pub async fn run_install_addon(
         &self,
         organization_id: Uuid,
@@ -453,8 +465,13 @@ impl LocalRunner {
 
     /// Sprint 3 ticket 08. Scale-out: add `count` workers to a Ready
     /// cluster. Caller is the API handler; resolution of CP endpoint
-    /// + join token + start_index happens here.
+    /// + join token + `start_index` happens here.
+    ///
+    /// # Errors
+    /// Returns an error if the scale-out workflow fails or if the database
+    /// queries fail.
     #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_lines)]
     pub async fn run_scale_out(
         &self,
         organization_id: Uuid,
@@ -599,6 +616,11 @@ impl LocalRunner {
     /// delete the requested workers. The runner picks the youngest
     /// `count` workers (highest index first) to keep node names
     /// stable across operations.
+    ///
+    /// # Errors
+    /// Returns an error if the scale-in workflow fails or if the database
+    /// queries fail.
+    #[allow(clippy::too_many_lines)]
     pub async fn run_scale_in(
         &self,
         organization_id: Uuid,

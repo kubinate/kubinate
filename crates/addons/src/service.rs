@@ -27,6 +27,10 @@ impl AddonService {
     }
 
     /// Validate + persist the addon row. Idempotent on `(cluster, addon)`.
+    ///
+    /// # Errors
+    /// Returns [`PlatformError`] if the version is empty, the addon slug is not
+    /// in the catalog, or the database query fails.
     pub async fn request_install(
         &self,
         organization_id: Uuid,
@@ -51,6 +55,9 @@ impl AddonService {
     }
 
     /// List installed / pending addons for a cluster.
+    ///
+    /// # Errors
+    /// Returns [`PlatformError`] if the database query fails.
     pub async fn list_for_cluster(
         &self,
         organization_id: Uuid,

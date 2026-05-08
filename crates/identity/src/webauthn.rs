@@ -1,4 +1,4 @@
-//! WebAuthn ceremony layer for Sprint 4 ticket 05.
+//! `WebAuthn` ceremony layer for Sprint 4 ticket 05.
 //!
 //! Wraps the `webauthn-rs` crate so the rest of the codebase deals
 //! in a small, testable surface:
@@ -109,7 +109,7 @@ pub struct WebauthnConfig {
 impl WebauthnConfig {
     /// Load from env if both required vars are set; return `Ok(None)`
     /// if either is missing so the caller can decide to disable
-    /// WebAuthn rather than fail closed at startup.
+    /// `WebAuthn` rather than fail closed at startup.
     ///
     /// # Errors
     /// Returns [`WebauthnError::Config`] when env vars are present
@@ -249,7 +249,6 @@ impl CeremonyStore for PgCeremonyStore {
         Ok(row.map(|r| {
             let kind_str: String = r.get("kind");
             let parsed_kind = match kind_str.as_str() {
-                "registration" => CeremonyKind::Registration,
                 "assertion" => CeremonyKind::Assertion,
                 _ => CeremonyKind::Registration, // CHECK constraint blocks others
             };
@@ -318,7 +317,7 @@ impl CeremonyStore for InMemoryCeremonyStore {
 /// API layer hands to [`crate::repository::PasskeyRepository::insert`].
 #[derive(Debug, Clone)]
 pub struct CompletedRegistration {
-    /// WebAuthn credential id (Base64URL string).
+    /// `WebAuthn` credential id (`Base64URL` string).
     pub credential_id: String,
     /// CBOR-encoded `webauthn-rs::Passkey` blob.
     pub credential_blob: Vec<u8>,
@@ -355,8 +354,8 @@ impl Ceremonies {
     ///
     /// # Errors
     /// [`WebauthnError::Config`] if webauthn-rs rejects the
-    /// (rp_id, rp_origin) pair (typically: origin's host doesn't
-    /// match rp_id).
+    /// (`rp_id`, `rp_origin`) pair (typically: origin's host doesn't
+    /// match `rp_id`).
     pub fn new(
         config: WebauthnConfig,
         store: Arc<dyn CeremonyStore>,
@@ -533,7 +532,7 @@ impl Ceremonies {
         // None means no update needed for this credential.
         let _ = passkey.update_credential(&result);
         let updated_blob = serialize_passkey(passkey)?;
-        let new_counter = i64::try_from(result.counter()).unwrap_or(0);
+        let new_counter = i64::from(result.counter());
 
         Ok(CompletedAssertion {
             passkey_row_id,

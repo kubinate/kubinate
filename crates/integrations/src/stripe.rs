@@ -109,6 +109,8 @@ impl HttpStripeClient {
     /// Build a client against a custom base URL — used by tests that
     /// point a wiremock at us.
     #[must_use]
+    /// # Panics
+    /// Panics if `reqwest::Client::build` fails (unreachable in practice).
     pub fn with_base_url(secret_key: SecretString, base_url: String) -> Self {
         let http = reqwest::Client::builder()
             .timeout(Duration::from_secs(15))
@@ -132,12 +134,13 @@ impl StripeClient for HttpStripeClient {
         // Stripe's API is form-encoded, with `[]` notation for arrays /
         // nested objects. We build the body explicitly to avoid the
         // weight of a full Stripe SDK.
-        let mut form: Vec<(String, String)> = Vec::new();
-        form.push(("mode".into(), "subscription".into()));
-        form.push(("line_items[0][price]".into(), params.price_id));
-        form.push(("line_items[0][quantity]".into(), "1".into()));
-        form.push(("success_url".into(), params.success_url));
-        form.push(("cancel_url".into(), params.cancel_url));
+        let mut form: Vec<(String, String)> = vec![
+            ("mode".into(), "subscription".into()),
+            ("line_items[0][price]".into(), params.price_id),
+            ("line_items[0][quantity]".into(), "1".into()),
+            ("success_url".into(), params.success_url),
+            ("cancel_url".into(), params.cancel_url),
+        ];
         if let Some(c) = params.customer_id {
             form.push(("customer".into(), c));
         }
@@ -229,9 +232,10 @@ pub fn verify_signature(
 }
 
 fn hex_lower(bytes: &[u8]) -> String {
+    use std::fmt::Write;
     let mut out = String::with_capacity(bytes.len() * 2);
     for b in bytes {
-        out.push_str(&format!("{b:02x}"));
+        write!(out, "{b:02x}").expect("write to String never fails");
     }
     out
 }
@@ -242,7 +246,7 @@ fn constant_time_eq_ignore_ascii_case(a: &[u8], b: &[u8]) -> bool {
     }
     let mut diff: u8 = 0;
     for (x, y) in a.iter().zip(b.iter()) {
-        diff |= x.eq_ignore_ascii_case(y) as u8 ^ 1;
+        diff |= u8::from(x.eq_ignore_ascii_case(y)) ^ 1;
     }
     diff == 0
 }

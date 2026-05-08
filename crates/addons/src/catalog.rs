@@ -1,7 +1,7 @@
 //! Allowlist of installable add-ons.
 //!
 //! Sprint 2 ticket 07 shipped the first one (ingress-nginx); Sprint 3
-//! ticket 09 added cert-manager. Loki, Velero, ArgoCD follow in later
+//! ticket 09 added cert-manager. Loki, Velero, `ArgoCD` follow in later
 //! sprints. Adding a new entry here is the only change required for
 //! the install workflow to accept it — the chart repo and default
 //! release name are derived from the slug.

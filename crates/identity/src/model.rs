@@ -84,7 +84,7 @@ impl Invite {
     }
 }
 
-/// A WebAuthn passkey registered to a user. The opaque
+/// A `WebAuthn` passkey registered to a user. The opaque
 /// `webauthn-rs`-encoded `credential` blob round-trips with the
 /// assertion ceremony; we never inspect it inside this crate.
 ///
@@ -96,7 +96,7 @@ pub struct Passkey {
     pub id: Uuid,
     /// The user who registered this passkey.
     pub user_id: Uuid,
-    /// WebAuthn credential id (Base64URL string per the spec).
+    /// `WebAuthn` credential id (`Base64URL` string per the spec).
     pub credential_id: String,
     /// CBOR-encoded `webauthn-rs::Passkey` blob. Opaque outside the
     /// assertion ceremony — never deserialise this anywhere except
@@ -107,7 +107,7 @@ pub struct Passkey {
     /// assertion whose authenticator counter is `<=` this value
     /// (cloned-authenticator detection).
     pub sign_counter: i64,
-    /// User-supplied label ("YubiKey 5C"). Capped at 64 chars in the
+    /// User-supplied label ("`YubiKey` 5C"). Capped at 64 chars in the
     /// API layer; no DB constraint to keep schema changes trivial.
     pub nickname: String,
     /// First-registration time.

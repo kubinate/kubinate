@@ -37,6 +37,9 @@ impl ClusterService {
     /// Create a new cluster row in `pending` status. Validates the
     /// allowlisted server type and region so the workflow never runs
     /// against free-form user input.
+    ///
+    /// # Errors
+    /// Returns [`PlatformError`] if validation fails or the database query fails.
     pub async fn create(
         &self,
         organization_id: Uuid,
@@ -48,11 +51,17 @@ impl ClusterService {
     }
 
     /// Fetch by id (for the dashboard status page).
+    ///
+    /// # Errors
+    /// Returns [`PlatformError`] if the cluster is not found or the database query fails.
     pub async fn get(&self, organization_id: Uuid, id: Uuid) -> Result<Cluster, PlatformError> {
         self.repo.get(organization_id, id).await
     }
 
     /// List live clusters for a tenant.
+    ///
+    /// # Errors
+    /// Returns [`PlatformError`] if the database query fails.
     pub async fn list(&self, organization_id: Uuid) -> Result<Vec<Cluster>, PlatformError> {
         self.repo.list(organization_id).await
     }
@@ -60,6 +69,9 @@ impl ClusterService {
     /// Encrypt and persist the kubeconfig produced by the
     /// provisioning workflow. Idempotent — a second call with the
     /// same plaintext re-uses the existing handle on the cluster row.
+    ///
+    /// # Errors
+    /// Returns [`PlatformError`] if the secret store or the database query fails.
     pub async fn store_kubeconfig(
         &self,
         organization_id: Uuid,
@@ -92,6 +104,10 @@ impl ClusterService {
     /// Retrieve the stored kubeconfig plaintext. The caller is
     /// responsible for keeping the returned [`SecretString`] inside
     /// the request handler — never log it, never persist it elsewhere.
+    ///
+    /// # Errors
+    /// Returns [`PlatformError`] if the kubeconfig is not yet available or the
+    /// database query fails.
     pub async fn fetch_kubeconfig(
         &self,
         organization_id: Uuid,
@@ -117,6 +133,10 @@ impl ClusterService {
     /// destroy workflow kicks off so the UI can reflect the in-flight
     /// state. Subsequent failures still leave the cluster recoverable
     /// (a re-run completes per ticket 05's idempotency AC).
+    ///
+    /// # Errors
+    /// Returns [`PlatformError`] if the cluster is already destroyed or the
+    /// database query fails.
     pub async fn begin_destroy(
         &self,
         organization_id: Uuid,
@@ -145,6 +165,9 @@ impl ClusterService {
     /// the kubeconfig secret, soft-delete the cluster row, and flip
     /// the status to `destroyed`. Each step is independently
     /// idempotent so a second call after a partial failure converges.
+    ///
+    /// # Errors
+    /// Returns [`PlatformError`] if the database query fails.
     pub async fn finalize_destroy(
         &self,
         organization_id: Uuid,
@@ -190,6 +213,9 @@ impl ClusterService {
     /// Mark a destroy attempt as failed (e.g. unrecoverable Hetzner
     /// auth error). Caller's responsibility to call this from the
     /// runner's error path.
+    ///
+    /// # Errors
+    /// Returns [`PlatformError`] if the database query fails.
     pub async fn mark_destroy_failed(
         &self,
         organization_id: Uuid,

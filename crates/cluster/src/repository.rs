@@ -82,6 +82,7 @@ pub trait ClusterRepository: Send + Sync {
 
     /// Record a Hetzner server we just created for this cluster, so
     /// the destroy workflow can find it later.
+    #[allow(clippy::too_many_arguments)]
     async fn record_server(
         &self,
         organization_id: Uuid,
@@ -134,7 +135,7 @@ impl ClusterRepository for PgClusterRepository {
         let id = Uuid::now_v7();
         let mut tx = self.pool.begin().await?;
         set_tenant(&mut tx, organization_id).await?;
-        audit.apply(&mut *tx).await?;
+        audit.apply(&mut tx).await?;
 
         // Defensive: the form should never let these through, but a
         // hand-crafted request might.
@@ -207,7 +208,7 @@ impl ClusterRepository for PgClusterRepository {
     ) -> Result<(), PlatformError> {
         let mut tx = self.pool.begin().await?;
         set_tenant(&mut tx, organization_id).await?;
-        audit.apply(&mut *tx).await?;
+        audit.apply(&mut tx).await?;
         let affected = sqlx::query(
             r"
             UPDATE clusters
@@ -261,7 +262,7 @@ impl ClusterRepository for PgClusterRepository {
     ) -> Result<(), PlatformError> {
         let mut tx = self.pool.begin().await?;
         set_tenant(&mut tx, organization_id).await?;
-        audit.apply(&mut *tx).await?;
+        audit.apply(&mut tx).await?;
         let affected = sqlx::query(
             r"
             UPDATE clusters
@@ -291,7 +292,7 @@ impl ClusterRepository for PgClusterRepository {
     ) -> Result<(), PlatformError> {
         let mut tx = self.pool.begin().await?;
         set_tenant(&mut tx, organization_id).await?;
-        audit.apply(&mut *tx).await?;
+        audit.apply(&mut tx).await?;
         let affected = sqlx::query(
             r"
             UPDATE clusters
@@ -319,7 +320,7 @@ impl ClusterRepository for PgClusterRepository {
     ) -> Result<(), PlatformError> {
         let mut tx = self.pool.begin().await?;
         set_tenant(&mut tx, organization_id).await?;
-        audit.apply(&mut *tx).await?;
+        audit.apply(&mut tx).await?;
         // Idempotent: the WHERE clause filters to live rows, so
         // re-deleting a destroyed cluster updates zero rows and
         // returns success — exactly what the destroy workflow's
@@ -370,7 +371,7 @@ impl ClusterRepository for PgClusterRepository {
         let id = Uuid::now_v7();
         let mut tx = self.pool.begin().await?;
         set_tenant(&mut tx, organization_id).await?;
-        audit.apply(&mut *tx).await?;
+        audit.apply(&mut tx).await?;
         sqlx::query(
             r"
             INSERT INTO cluster_servers
@@ -443,7 +444,7 @@ impl ClusterRepository for PgClusterRepository {
     ) -> Result<(), PlatformError> {
         let mut tx = self.pool.begin().await?;
         set_tenant(&mut tx, organization_id).await?;
-        audit.apply(&mut *tx).await?;
+        audit.apply(&mut tx).await?;
         sqlx::query(
             "UPDATE cluster_servers SET deleted_at = now()
              WHERE cluster_id = $1 AND deleted_at IS NULL",
@@ -468,6 +469,7 @@ async fn set_tenant(
     Ok(())
 }
 
+#[allow(clippy::needless_pass_by_value)]
 fn row_to_cluster(row: sqlx::postgres::PgRow) -> Cluster {
     Cluster {
         id: row.get("id"),

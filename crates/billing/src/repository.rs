@@ -11,7 +11,7 @@ use crate::model::{BillingPlan, OrgBillingState, StripeWebhookEvent};
 /// append-only logging into `subscription_events`.
 #[async_trait]
 pub trait BillingRepository: Send + Sync {
-    /// Look up plan + stripe_customer_id for an org.
+    /// Look up plan + `stripe_customer_id` for an org.
     async fn get(&self, organization_id: Uuid) -> Result<OrgBillingState, PlatformError>;
 
     /// Resolve the org id from a Stripe customer id. Returns `None`
