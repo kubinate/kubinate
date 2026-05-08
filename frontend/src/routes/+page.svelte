@@ -7,7 +7,9 @@
 </svelte:head>
 
 <!-- Hero -->
-<section class="bg-foreground text-background flex min-h-screen flex-col items-center justify-center px-6 py-24 text-center">
+<section
+  class="bg-foreground text-background flex min-h-screen flex-col items-center justify-center px-6 py-24 text-center"
+>
   <h1 class="max-w-3xl text-4xl font-bold leading-tight tracking-tight sm:text-5xl lg:text-6xl">
     Managed k3s on infrastructure you own.
   </h1>
@@ -17,7 +19,7 @@
   </p>
   <div class="mt-10 flex flex-wrap items-center justify-center gap-4">
     <a
-      href="/app"
+      href="/login"
       class="bg-background text-foreground hover:bg-background/90 rounded-lg px-6 py-3 text-sm font-semibold transition-colors"
     >
       Start free

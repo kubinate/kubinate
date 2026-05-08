@@ -336,7 +336,10 @@
 </svelte:head>
 
 {#if error}
-  <div role="alert" class="rounded-md border border-destructive/20 bg-destructive/10 p-4 text-sm text-destructive">
+  <div
+    role="alert"
+    class="rounded-md border border-destructive/20 bg-destructive/10 p-4 text-sm text-destructive"
+  >
     {error}
   </div>
 {:else if !cluster}
@@ -401,9 +404,7 @@
                   {prettyStep(cluster.current_step)}
                 </p>
               {/if}
-              <p class="text-sm text-amber-700 mt-1">
-                Provisioning typically takes 5–15 minutes.
-              </p>
+              <p class="text-sm text-amber-700 mt-1">Provisioning typically takes 5–15 minutes.</p>
             </div>
           </div>
         </div>
@@ -416,9 +417,7 @@
           <h2 class="text-sm font-semibold text-red-800">{message.title}</h2>
           <p class="text-sm text-red-700 mt-1">{message.detail}</p>
           {#if message.retryable}
-            <Button variant="outline" size="sm" onclick={retry} class="mt-3">
-              Retry
-            </Button>
+            <Button variant="outline" size="sm" onclick={retry} class="mt-3">Retry</Button>
           {/if}
         </div>
       {/if}
@@ -518,7 +517,10 @@
       </div>
 
       {#if installError}
-        <div role="alert" class="rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
+        <div
+          role="alert"
+          class="rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive"
+        >
           {installError}
         </div>
       {/if}

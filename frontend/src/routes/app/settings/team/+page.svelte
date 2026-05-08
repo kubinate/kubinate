@@ -165,7 +165,10 @@
 <h1 class="text-2xl font-semibold mb-6">Team</h1>
 
 {#if loadError}
-  <div class="mb-4 rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive" role="alert">
+  <div
+    class="mb-4 rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+    role="alert"
+  >
     {loadError}
   </div>
 {/if}
@@ -290,17 +293,26 @@
     </form>
 
     {#if inviteFormError}
-      <div class="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive" role="alert">
+      <div
+        class="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+        role="alert"
+      >
         {inviteFormError}
       </div>
     {/if}
 
     {#if lastIssuedToken}
-      <div class="rounded-md border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/40 p-4" role="alert" data-testid="issued-token">
+      <div
+        class="rounded-md border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/40 p-4"
+        role="alert"
+        data-testid="issued-token"
+      >
         <p class="text-sm font-medium text-amber-800 dark:text-amber-300 mb-2">
           Copy and share this invite link — it will not be shown again.
         </p>
-        <code class="block rounded border border-amber-200 dark:border-amber-800 bg-white dark:bg-zinc-900 px-3 py-2 font-mono text-sm break-all select-all text-zinc-900 dark:text-zinc-100">
+        <code
+          class="block rounded border border-amber-200 dark:border-amber-800 bg-white dark:bg-zinc-900 px-3 py-2 font-mono text-sm break-all select-all text-zinc-900 dark:text-zinc-100"
+        >
           {lastIssuedToken}
         </code>
       </div>
@@ -341,7 +353,9 @@
                       Revoke
                     </Button>
                   {:else}
-                    <span class="text-xs text-muted-foreground capitalize">{inviteStatus(invite)}</span>
+                    <span class="text-xs text-muted-foreground capitalize"
+                      >{inviteStatus(invite)}</span
+                    >
                   {/if}
                 </TableCell>
               </TableRow>

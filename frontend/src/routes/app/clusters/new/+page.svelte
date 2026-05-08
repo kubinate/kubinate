@@ -185,11 +185,13 @@
               {#if credentials === null}
                 <p class="text-sm text-muted-foreground">Loading credentials…</p>
               {:else if credentials.length === 0}
-                <div class="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                <div
+                  data-testid="no-credentials"
+                  class="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800"
+                >
                   No Hetzner tokens yet — <a
                     href="/app/settings/integrations"
-                    class="underline underline-offset-2 font-medium hover:text-amber-900"
-                    >add one</a
+                    class="underline underline-offset-2 font-medium hover:text-amber-900">add one</a
                   > to provision a cluster.
                 </div>
               {:else}
@@ -212,7 +214,10 @@
 
             <!-- Submit error -->
             {#if submitError}
-              <div role="alert" class="rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
+              <div
+                role="alert"
+                class="rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive"
+              >
                 {submitError}
               </div>
             {/if}
