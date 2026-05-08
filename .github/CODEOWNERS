@@ -1,0 +1,14 @@
+# CODEOWNERS for kubinate/kubinate.
+#
+# Every code path requires review from at least one of the listed
+# owners. GitHub auto-requests their review on any PR that touches
+# matching paths; combined with the master/release/staging branch
+# protection's "require pull request before merging" + "require
+# approval count = 1", a code-owner approval is the gate.
+#
+# Syntax: <pattern> <owner> [<owner>...]
+# Order matters — the *last* matching pattern wins. Keep the global
+# rule at the top and add narrower rules below if a specific area
+# ever wants a different owner set.
+
+* @kubinate @omerekmen
