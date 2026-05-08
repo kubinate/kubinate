@@ -5,6 +5,28 @@
   import { ApiError, getCluster, loadClusterCatalog } from '$lib/api/clusters';
   import { installAddon, listAddons } from '$lib/api/addons';
   import { errorCategoryMessage, type AddonView, type ClusterView } from '$lib/api/schemas';
+  import { Download, Loader2 } from 'lucide-svelte';
+  import { Badge } from '$lib/components/ui/badge';
+  import { Button } from '$lib/components/ui/button';
+  import { Card, CardHeader, CardTitle, CardContent } from '$lib/components/ui/card';
+  import {
+    Table,
+    TableHeader,
+    TableRow,
+    TableHead,
+    TableBody,
+    TableCell
+  } from '$lib/components/ui/table';
+  import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogDescription,
+    DialogFooter
+  } from '$lib/components/ui/dialog';
+  import { Input } from '$lib/components/ui/input';
+  import { Skeleton } from '$lib/components/ui/skeleton';
 
   // Sprint 3 ticket 10 — SSE is the primary live-update mechanism;
   // 2s polling is only a fallback for environments where the
@@ -287,298 +309,233 @@
     // create form so the user can submit again.
     await goto('/app/clusters/new');
   }
+
+  function statusBadgeClass(status: string): string {
+    if (status === 'ready') {
+      return 'bg-emerald-100 text-emerald-800 border-emerald-200';
+    }
+    if (status === 'failed' || status === 'destroyed') {
+      return 'bg-red-100 text-red-800 border-red-200';
+    }
+    return 'bg-amber-100 text-amber-800 border-amber-200';
+  }
+
+  function addonStatusBadgeClass(status: string): string {
+    if (status === 'ready') {
+      return 'bg-emerald-100 text-emerald-800 border-emerald-200';
+    }
+    if (status === 'failed') {
+      return 'bg-red-100 text-red-800 border-red-200';
+    }
+    return 'bg-amber-100 text-amber-800 border-amber-200';
+  }
 </script>
 
 <svelte:head>
   <title>Cluster — Kubinate</title>
 </svelte:head>
 
-<h1>Cluster {cluster?.name ?? page.params.id}</h1>
-
 {#if error}
-  <p class="error" role="alert">{error}</p>
+  <div role="alert" class="rounded-md border border-destructive/20 bg-destructive/10 p-4 text-sm text-destructive">
+    {error}
+  </div>
 {:else if !cluster}
-  <p>Loading…</p>
+  <div class="flex items-center justify-center py-24">
+    <div class="h-8 w-8 animate-spin rounded-full border-4 border-muted border-t-foreground"></div>
+  </div>
 {:else}
-  <dl>
-    <dt>Status</dt>
-    <dd class="status status-{cluster.status}">{cluster.status}</dd>
+  <div class="flex items-center gap-3 mb-6">
+    <h1 class="text-2xl font-semibold">{cluster?.name ?? 'Cluster'}</h1>
+    <Badge class={statusBadgeClass(cluster.status)}>{cluster.status}</Badge>
+  </div>
 
-    {#if cluster.current_step}
-      <dt>Step</dt>
-      <dd>{prettyStep(cluster.current_step)}</dd>
-    {/if}
+  <div class="lg:grid lg:grid-cols-3 lg:gap-6">
+    <!-- Left column -->
+    <div class="lg:col-span-2 space-y-4">
+      <!-- Status card -->
+      <Card>
+        <CardHeader>
+          <CardTitle>Cluster details</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <dl class="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+            <dt class="font-medium text-muted-foreground">Region</dt>
+            <dd>{cluster.region}</dd>
 
-    <dt>Region</dt>
-    <dd>{cluster.region}</dd>
-    <dt>Server type</dt>
-    <dd>{cluster.server_type}</dd>
-    <dt>Workers</dt>
-    <dd>{cluster.worker_count}</dd>
-    <dt>Created</dt>
-    <dd>{new Date(cluster.created_at).toLocaleString()}</dd>
+            <dt class="font-medium text-muted-foreground">Server type</dt>
+            <dd>{cluster.server_type}</dd>
 
-    {#if !cluster.terminal}
-      <dt>Elapsed</dt>
-      <dd>{fmtMmSs(elapsedSeconds)}</dd>
-      <dt>Approx. remaining</dt>
-      <dd>{fmtMmSs(estimatedRemainingSeconds)}</dd>
-    {/if}
-  </dl>
+            <dt class="font-medium text-muted-foreground">Workers</dt>
+            <dd>{cluster.worker_count}</dd>
 
-  {#if cluster.status === 'pending' || cluster.status === 'provisioning'}
-    <p class="progress" aria-live="polite">
-      Provisioning typically takes 5–15 minutes. This page refreshes every 2&nbsp;seconds.
-    </p>
-  {:else if cluster.status === 'ready' && cluster.kubeconfig_available}
-    <a class="cta" href={`/api/v1/clusters/${cluster.id}/kubeconfig`} download>
-      Download kubeconfig
-    </a>
-  {:else if cluster.status === 'failed' && cluster.error_category}
-    {@const message = errorCategoryMessage(cluster.error_category)}
-    <section class="failure">
-      <h2>{message.title}</h2>
-      <p>{message.detail}</p>
-      {#if message.retryable}
-        <button type="button" onclick={retry}>Retry</button>
+            <dt class="font-medium text-muted-foreground">Created</dt>
+            <dd>{new Date(cluster.created_at).toLocaleString()}</dd>
+
+            <dt class="font-medium text-muted-foreground">Status</dt>
+            <dd class="capitalize">{cluster.status}</dd>
+
+            {#if cluster.current_step}
+              <dt class="font-medium text-muted-foreground">Step</dt>
+              <dd class="capitalize">{prettyStep(cluster.current_step)}</dd>
+            {/if}
+
+            {#if !cluster.terminal}
+              <dt class="font-medium text-muted-foreground">Elapsed</dt>
+              <dd>{fmtMmSs(elapsedSeconds)}</dd>
+
+              <dt class="font-medium text-muted-foreground">Approx. remaining</dt>
+              <dd>{fmtMmSs(estimatedRemainingSeconds)}</dd>
+            {/if}
+          </dl>
+        </CardContent>
+      </Card>
+
+      <!-- Provisioning progress -->
+      {#if cluster.status === 'pending' || cluster.status === 'provisioning'}
+        <div class="rounded-lg border border-amber-200 bg-amber-50 p-4" aria-live="polite">
+          <div class="flex items-start gap-3">
+            <Loader2 class="h-4 w-4 animate-spin text-amber-600 mt-0.5 shrink-0" />
+            <div>
+              {#if cluster.current_step}
+                <p class="text-sm font-medium text-amber-800 capitalize">
+                  {prettyStep(cluster.current_step)}
+                </p>
+              {/if}
+              <p class="text-sm text-amber-700 mt-1">
+                Provisioning typically takes 5–15 minutes.
+              </p>
+            </div>
+          </div>
+        </div>
       {/if}
-    </section>
-  {/if}
 
-  <section class="addons" data-testid="addon-panel">
-    <h2>Add-ons</h2>
-    {#if addons === null}
-      <p class="muted">Loading…</p>
-    {:else if addons.length === 0}
-      <p class="muted">No add-ons installed yet.</p>
-    {:else}
-      <table>
-        <thead>
-          <tr>
-            <th>Add-on</th>
-            <th>Version</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {#each addons as a (a.id)}
-            <tr data-testid={`addon-row-${a.addon}`}>
-              <td>{a.addon}</td>
-              <td>{a.version}</td>
-              <td class="status status-{a.status}">{describeAddonStatus(a)}</td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
-    {/if}
-
-    {#if cluster.status === 'ready' && installableSlugs.length > 0}
-      <div class="addon-ctas" data-testid="addon-ctas">
-        {#each installableSlugs as slug (slug)}
-          <button
-            type="button"
-            onclick={() => openInstallModal(slug)}
-            data-testid={`install-${slug}`}
-          >
-            Install {slug}
-          </button>
-        {/each}
-      </div>
-    {/if}
-  </section>
-{/if}
-
-{#if installModalOpen && installAddonSlug}
-  <div class="modal-backdrop" role="dialog" aria-modal="true" data-testid="install-modal">
-    <div class="modal">
-      <h3>Install {installAddonSlug}</h3>
-      <p class="muted">
-        Pinned chart version. Older + newer versions need a separate operator review before they hit
-        the catalog.
-      </p>
-      <label>
-        Version
-        <input type="text" bind:value={installVersion} data-testid="install-version" required />
-      </label>
-      {#if installError}
-        <p class="error" role="alert">{installError}</p>
+      <!-- Failure card -->
+      {#if cluster.status === 'failed' && cluster.error_category}
+        {@const message = errorCategoryMessage(cluster.error_category)}
+        <div class="rounded-lg border border-red-200 bg-red-50 p-4">
+          <h2 class="text-sm font-semibold text-red-800">{message.title}</h2>
+          <p class="text-sm text-red-700 mt-1">{message.detail}</p>
+          {#if message.retryable}
+            <Button variant="outline" size="sm" onclick={retry} class="mt-3">
+              Retry
+            </Button>
+          {/if}
+        </div>
       {/if}
-      <div class="modal-actions">
-        <button type="button" onclick={closeInstallModal} disabled={installInFlight}>
-          Cancel
-        </button>
-        <button
-          type="button"
-          onclick={confirmInstall}
-          disabled={installInFlight}
-          data-testid="install-confirm"
-        >
-          {installInFlight ? 'Installing…' : 'Install'}
-        </button>
-      </div>
+
+      <!-- Ready actions -->
+      {#if cluster.status === 'ready' && cluster.kubeconfig_available}
+        <div>
+          <Button href={`/api/v1/clusters/${cluster.id}/kubeconfig`} download>
+            <Download class="h-4 w-4" />
+            Download kubeconfig
+          </Button>
+        </div>
+      {/if}
+    </div>
+
+    <!-- Right column -->
+    <div class="lg:col-span-1 mt-6 lg:mt-0">
+      <Card data-testid="addon-panel">
+        <CardHeader>
+          <CardTitle>Add-ons</CardTitle>
+        </CardHeader>
+        <CardContent class="space-y-4">
+          {#if addons === null}
+            <div class="space-y-2">
+              <Skeleton class="h-4 w-full" />
+              <Skeleton class="h-4 w-3/4" />
+              <Skeleton class="h-4 w-1/2" />
+            </div>
+          {:else if addons.length === 0}
+            <p class="text-sm text-muted-foreground">No add-ons installed.</p>
+          {:else}
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Add-on</TableHead>
+                  <TableHead>Version</TableHead>
+                  <TableHead>Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {#each addons as a (a.id)}
+                  <TableRow data-testid={`addon-row-${a.addon}`}>
+                    <TableCell class="font-medium">{a.addon}</TableCell>
+                    <TableCell>{a.version}</TableCell>
+                    <TableCell>
+                      <Badge class={addonStatusBadgeClass(a.status)}>
+                        {describeAddonStatus(a)}
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
+                {/each}
+              </TableBody>
+            </Table>
+          {/if}
+
+          {#if cluster.status === 'ready' && installableSlugs.length > 0}
+            <div class="flex flex-wrap gap-2" data-testid="addon-ctas">
+              {#each installableSlugs as slug (slug)}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onclick={() => openInstallModal(slug)}
+                  data-testid={`install-${slug}`}
+                >
+                  Install {slug}
+                </Button>
+              {/each}
+            </div>
+          {/if}
+        </CardContent>
+      </Card>
     </div>
   </div>
 {/if}
 
-<style>
-  dl {
-    display: grid;
-    grid-template-columns: max-content 1fr;
-    gap: 0.5rem 1.5rem;
-  }
-  dt {
-    font-weight: 600;
-    color: #333;
-  }
-  .status {
-    text-transform: capitalize;
-    font-weight: 600;
-  }
-  .status-pending,
-  .status-provisioning,
-  .status-destroying {
-    color: #b36b00;
-  }
-  .status-ready {
-    color: #1a7f37;
-  }
-  .status-failed,
-  .status-destroyed {
-    color: #b00020;
-  }
-  .progress {
-    color: #555;
-    margin-top: 1rem;
-  }
-  .error {
-    color: #b00020;
-  }
-  .cta {
-    display: inline-block;
-    margin-top: 1rem;
-    padding: 0.6rem 1.2rem;
-    background: #1a7f37;
-    color: #fff;
-    border-radius: 4px;
-    text-decoration: none;
-    font-weight: 600;
-  }
-  .failure {
-    margin-top: 1.5rem;
-    padding: 1rem;
-    background: #fff5f5;
-    border: 1px solid #f5b3b3;
-    border-radius: 6px;
-  }
-  .failure h2 {
-    margin: 0 0 0.5rem 0;
-    font-size: 1.1rem;
-    color: #b00020;
-  }
-  .failure button {
-    padding: 0.5rem 1rem;
-    background: #222;
-    color: #fff;
-    border: 0;
-    border-radius: 4px;
-    font-weight: 600;
-    cursor: pointer;
-  }
-  .addons {
-    margin-top: 2rem;
-  }
-  .addons h2 {
-    font-size: 1.1rem;
-    margin: 0 0 0.5rem;
-  }
-  .addons table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-bottom: 0.75rem;
-  }
-  .addons th,
-  .addons td {
-    text-align: left;
-    padding: 0.4rem 0.5rem;
-    border-bottom: 1px solid #eee;
-  }
-  .addons th {
-    font-size: 0.85rem;
-    color: #555;
-    font-weight: 600;
-  }
-  .addon-ctas {
-    display: flex;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-  }
-  .addon-ctas button {
-    padding: 0.5rem 1rem;
-    background: #1a7f37;
-    color: #fff;
-    border: 0;
-    border-radius: 4px;
-    font-weight: 600;
-    cursor: pointer;
-  }
-  .muted {
-    color: #555;
-  }
-  .modal-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.4);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 50;
-  }
-  .modal {
-    background: #fff;
-    border-radius: 8px;
-    padding: 1.25rem 1.5rem;
-    width: min(420px, 90vw);
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
-  }
-  .modal h3 {
-    margin: 0 0 0.5rem;
-  }
-  .modal label {
-    display: grid;
-    gap: 0.25rem;
-    font-weight: 600;
-    margin-top: 0.75rem;
-  }
-  .modal input {
-    padding: 0.4rem;
-    font: inherit;
-    border: 1px solid #bbb;
-    border-radius: 4px;
-    font-weight: 400;
-  }
-  .modal-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 0.5rem;
-    margin-top: 1rem;
-  }
-  .modal-actions button {
-    padding: 0.5rem 1rem;
-    border: 0;
-    border-radius: 4px;
-    font-weight: 600;
-    cursor: pointer;
-  }
-  .modal-actions button:first-child {
-    background: #eee;
-    color: #222;
-  }
-  .modal-actions button:last-child {
-    background: #1a7f37;
-    color: #fff;
-  }
-  .modal-actions button[disabled] {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-</style>
+<!-- Install modal -->
+<Dialog bind:open={installModalOpen}>
+  <DialogContent data-testid="install-modal">
+    <DialogHeader>
+      <DialogTitle>Install {installAddonSlug}</DialogTitle>
+      <DialogDescription>
+        Pinned chart version. Older + newer versions need a separate operator review before they hit
+        the catalog.
+      </DialogDescription>
+    </DialogHeader>
+
+    <div class="space-y-3 py-2">
+      <div class="space-y-1.5">
+        <label for="install-version" class="text-sm font-medium">Version</label>
+        <Input
+          id="install-version"
+          type="text"
+          bind:value={installVersion}
+          data-testid="install-version"
+          required
+        />
+      </div>
+
+      {#if installError}
+        <div role="alert" class="rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
+          {installError}
+        </div>
+      {/if}
+    </div>
+
+    <DialogFooter>
+      <Button variant="outline" onclick={closeInstallModal} disabled={installInFlight}>
+        Cancel
+      </Button>
+      <Button onclick={confirmInstall} disabled={installInFlight} data-testid="install-confirm">
+        {#if installInFlight}
+          <Loader2 class="mr-2 h-4 w-4 animate-spin" />
+          Installing…
+        {:else}
+          Install
+        {/if}
+      </Button>
+    </DialogFooter>
+  </DialogContent>
+</Dialog>

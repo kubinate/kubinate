@@ -17,6 +17,33 @@
     webauthnJsonToGet
   } from '$lib/api/passkey';
   import type { PasskeyView } from '$lib/api/schemas';
+  import { Button } from '$lib/components/ui/button';
+  import {
+    Card,
+    CardHeader,
+    CardTitle,
+    CardDescription,
+    CardContent
+  } from '$lib/components/ui/card';
+  import { Input } from '$lib/components/ui/input';
+  import { Label } from '$lib/components/ui/label';
+  import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogDescription,
+    DialogFooter
+  } from '$lib/components/ui/dialog';
+  import {
+    Table,
+    TableHeader,
+    TableRow,
+    TableHead,
+    TableBody,
+    TableCell
+  } from '$lib/components/ui/table';
+  import { Plus, RefreshCw, KeyRound, ShieldCheck } from 'lucide-svelte';
 
   // Sprint 4 ticket 05 — settings/security surfaces three things:
   //   1. The user's existing passkeys (list + register + revoke).
@@ -256,353 +283,281 @@
   <title>Security — Kubinate</title>
 </svelte:head>
 
-<h1>Security</h1>
+<h1 class="text-2xl font-semibold mb-6">Security</h1>
 
+<!-- MFA assertion prompt (only when ?mfa=required) -->
 {#if mfaRequired}
-  <section class="mfa-prompt" aria-live="polite">
-    <h2>Verify your identity</h2>
-    <p>Your role requires a passkey check before we let you continue.</p>
-    <div class="mfa-actions">
-      <button type="button" onclick={assert} disabled={assertInFlight} data-testid="assert-button">
-        {assertInFlight ? 'Verifying…' : 'Verify with passkey'}
-      </button>
-      <button
-        type="button"
-        class="link"
-        onclick={openRedeemModal}
-        data-testid="recovery-redeem-link"
-      >
-        Use a recovery code
-      </button>
+  <div
+    class="mb-6 rounded-lg border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/40 p-5"
+    aria-live="polite"
+  >
+    <div class="flex items-start gap-3">
+      <ShieldCheck class="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+      <div class="flex-1">
+        <h2 class="text-sm font-semibold text-amber-900 dark:text-amber-200 mb-1">
+          Verify your identity
+        </h2>
+        <p class="text-sm text-amber-800 dark:text-amber-300 mb-4">
+          Use your passkey to complete sign-in.
+        </p>
+        <div class="flex flex-wrap items-center gap-3">
+          <Button
+            onclick={assert}
+            disabled={assertInFlight}
+            data-testid="assert-button"
+          >
+            {assertInFlight ? 'Verifying…' : 'Authenticate with passkey'}
+          </Button>
+          <button
+            type="button"
+            onclick={openRedeemModal}
+            class="text-sm text-amber-700 dark:text-amber-400 underline underline-offset-2 hover:text-amber-900 dark:hover:text-amber-200"
+            data-testid="recovery-redeem-link"
+          >
+            Use a recovery code
+          </button>
+        </div>
+        {#if assertError}
+          <div class="mt-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive" role="alert">
+            {assertError}
+          </div>
+        {/if}
+      </div>
     </div>
-    {#if assertError}
-      <p class="error" role="alert">{assertError}</p>
-    {/if}
-  </section>
+  </div>
 {/if}
 
-<section class="passkeys">
-  <h2>Passkeys</h2>
-  <p class="muted">
-    Passkeys replace passwords for owner and admin sign-ins. Register one per device.
-  </p>
-
-  <div class="section-actions">
-    <button type="button" onclick={openRegisterModal} data-testid="register-button">
-      Register a passkey
-    </button>
-  </div>
-
-  {#if loadError}
-    <p class="error" role="alert">{loadError}</p>
-  {:else if passkeys === null}
-    <p class="muted">Loading…</p>
-  {:else if passkeys.length === 0}
-    <p class="muted">No passkeys yet.</p>
-  {:else}
-    <table>
-      <thead>
-        <tr>
-          <th>Nickname</th>
-          <th>Registered</th>
-          <th>Last used</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {#each passkeys as p (p.id)}
-          <tr data-testid={`passkey-row-${p.id}`}>
-            <td>{p.nickname}</td>
-            <td>{fmtDate(p.registered_at)}</td>
-            <td>{fmtLastUsed(p.last_used_at)}</td>
-            <td>
-              <button
-                type="button"
-                class="danger"
-                onclick={() => revoke(p.id, p.nickname)}
-                disabled={revokingId === p.id}
-                data-testid={`revoke-${p.id}`}
-              >
-                {revokingId === p.id ? 'Revoking…' : 'Revoke'}
-              </button>
-            </td>
-          </tr>
+<!-- Passkeys section -->
+<Card class="mb-6">
+  <CardHeader>
+    <CardTitle>Passkeys</CardTitle>
+    <CardDescription>
+      Use a passkey to verify your identity when signing in as Owner or Admin.
+    </CardDescription>
+  </CardHeader>
+  <CardContent class="space-y-4">
+    {#if loadError}
+      <div class="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive" role="alert">
+        {loadError}
+      </div>
+    {:else if passkeys === null}
+      <div class="space-y-2">
+        {#each [1, 2] as _ (_)}
+          <div class="h-10 rounded-md bg-muted animate-pulse"></div>
         {/each}
-      </tbody>
-    </table>
-  {/if}
+      </div>
+    {:else if passkeys.length === 0}
+      <div class="flex flex-col items-center justify-center py-8 text-center">
+        <KeyRound class="h-8 w-8 text-muted-foreground mb-3" />
+        <p class="text-sm text-muted-foreground">No passkeys registered yet.</p>
+      </div>
+    {:else}
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Nickname</TableHead>
+            <TableHead>Registered</TableHead>
+            <TableHead>Last used</TableHead>
+            <TableHead class="w-[100px]">Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {#each passkeys as p (p.id)}
+            <TableRow data-testid={`passkey-row-${p.id}`}>
+              <TableCell class="font-medium text-sm">{p.nickname}</TableCell>
+              <TableCell class="text-sm text-muted-foreground">{fmtDate(p.registered_at)}</TableCell>
+              <TableCell class="text-sm text-muted-foreground">{fmtLastUsed(p.last_used_at)}</TableCell>
+              <TableCell>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onclick={() => revoke(p.id, p.nickname)}
+                  disabled={revokingId === p.id}
+                  data-testid={`revoke-${p.id}`}
+                >
+                  {revokingId === p.id ? 'Revoking…' : 'Revoke'}
+                </Button>
+              </TableCell>
+            </TableRow>
+          {/each}
+        </TableBody>
+      </Table>
+    {/if}
 
-  {#if revokeError}
-    <p class="error" role="alert">{revokeError}</p>
-  {/if}
-</section>
+    {#if revokeError}
+      <div class="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive" role="alert">
+        {revokeError}
+      </div>
+    {/if}
 
-<section class="recovery">
-  <h2>Recovery codes</h2>
-  <p class="muted">
-    Single-use codes you can redeem if you lose every passkey. Regenerating invalidates any
-    previously issued codes.
-  </p>
-  <div class="section-actions">
-    <button
-      type="button"
+    <div class="pt-2">
+      <Button variant="outline" onclick={openRegisterModal} data-testid="register-button">
+        <Plus class="mr-2 h-4 w-4" />
+        Register a passkey
+      </Button>
+    </div>
+  </CardContent>
+</Card>
+
+<!-- Recovery codes section -->
+<Card>
+  <CardHeader>
+    <CardTitle>Recovery codes</CardTitle>
+    <CardDescription>
+      Recovery codes let you regain access if you lose your passkey.
+    </CardDescription>
+  </CardHeader>
+  <CardContent class="space-y-4">
+    <Button
+      variant="outline"
       onclick={regenerate}
       disabled={recoveryInFlight}
       data-testid="regenerate-button"
     >
-      {recoveryInFlight ? 'Generating…' : 'Regenerate'}
-    </button>
-  </div>
-  {#if recoveryError && !recoveryModalOpen}
-    <p class="error" role="alert">{recoveryError}</p>
-  {/if}
-</section>
+      <RefreshCw class="mr-2 h-4 w-4 {recoveryInFlight ? 'animate-spin' : ''}" />
+      {recoveryInFlight ? 'Generating…' : 'Regenerate recovery codes'}
+    </Button>
 
-{#if registerModalOpen}
-  <div class="modal-backdrop" role="dialog" aria-modal="true">
-    <div class="modal">
-      <h3>Register a passkey</h3>
-      <p class="muted">
+    {#if recoveryError && !recoveryModalOpen}
+      <div class="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive" role="alert">
+        {recoveryError}
+      </div>
+    {/if}
+  </CardContent>
+</Card>
+
+<!-- Register passkey modal -->
+<Dialog bind:open={registerModalOpen}>
+  <DialogContent>
+    <DialogHeader>
+      <DialogTitle>Register a passkey</DialogTitle>
+      <DialogDescription>
         Pick a name that helps you recognise this device later (e.g. "MacBook" or "YubiKey 5C").
-      </p>
-      <label>
-        Nickname
-        <input
+      </DialogDescription>
+    </DialogHeader>
+
+    <div class="space-y-3 py-2">
+      <div class="space-y-1.5">
+        <Label for="register-nickname">Nickname</Label>
+        <Input
+          id="register-nickname"
           type="text"
           bind:value={registerNickname}
-          maxlength="64"
+          maxlength={64}
           required
           data-testid="register-nickname"
         />
-      </label>
+      </div>
+
       {#if registerError}
-        <p class="error" role="alert">{registerError}</p>
+        <div class="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive" role="alert">
+          {registerError}
+        </div>
       {/if}
-      <div class="modal-actions">
-        <button type="button" onclick={closeRegisterModal} disabled={registerInFlight}>
-          Cancel
-        </button>
-        <button
-          type="button"
-          onclick={confirmRegister}
-          disabled={registerInFlight}
-          data-testid="register-confirm"
-        >
-          {registerInFlight ? 'Registering…' : 'Register'}
-        </button>
-      </div>
     </div>
-  </div>
-{/if}
 
-{#if recoveryModalOpen && recoveryCodes}
-  <div class="modal-backdrop" role="dialog" aria-modal="true" data-testid="recovery-modal">
-    <div class="modal">
-      <h3>Save your recovery codes</h3>
-      <p>These codes will not be shown again. Save them in your password manager now.</p>
-      <pre data-testid="recovery-codes-list">{recoveryCodes.join('\n')}</pre>
+    <DialogFooter>
+      <Button variant="outline" onclick={closeRegisterModal} disabled={registerInFlight}>
+        Cancel
+      </Button>
+      <Button
+        onclick={confirmRegister}
+        disabled={registerInFlight}
+        data-testid="register-confirm"
+      >
+        {registerInFlight ? 'Registering…' : 'Register'}
+      </Button>
+    </DialogFooter>
+  </DialogContent>
+</Dialog>
+
+<!-- Recovery codes display modal -->
+<Dialog
+  open={recoveryModalOpen && recoveryCodes !== null}
+  onOpenChange={(open) => { if (!open) tryCloseRecoveryModal(); }}
+>
+  <DialogContent data-testid="recovery-modal">
+    <DialogHeader>
+      <DialogTitle>Save your recovery codes</DialogTitle>
+      <DialogDescription>
+        Save these codes somewhere safe. Each code can only be used once.
+      </DialogDescription>
+    </DialogHeader>
+
+    <div class="space-y-3 py-2">
+      {#if recoveryCodes && recoveryCodes.length > 0}
+        <div class="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/40 p-3">
+          <p class="text-xs font-medium text-amber-800 dark:text-amber-300 mb-2">
+            These codes will not be shown again. Save them in your password manager now.
+          </p>
+          <div class="grid grid-cols-2 gap-1.5" data-testid="recovery-codes-list">
+            {#each recoveryCodes as code (code)}
+              <code class="block rounded bg-white dark:bg-zinc-900 border border-amber-200 dark:border-amber-800 px-2 py-1 font-mono text-sm text-center">
+                {code}
+              </code>
+            {/each}
+          </div>
+        </div>
+      {/if}
+
       {#if recoveryError}
-        <p class="error" role="alert">{recoveryError}</p>
+        <div class="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive" role="alert">
+          {recoveryError}
+        </div>
       {/if}
-      <div class="modal-actions">
-        <button type="button" onclick={tryCloseRecoveryModal}>Close</button>
-        <button type="button" onclick={copyCodes} data-testid="copy-codes">
-          {recoveryCopied ? 'Copied' : 'Copy all'}
-        </button>
-      </div>
     </div>
-  </div>
-{/if}
 
-{#if redeemModalOpen}
-  <div class="modal-backdrop" role="dialog" aria-modal="true">
-    <div class="modal">
-      <h3>Use a recovery code</h3>
-      <p class="muted">Each code works once. After redeeming, regenerate a fresh batch.</p>
-      <label>
-        Recovery code
-        <input
+    <DialogFooter>
+      <Button variant="outline" onclick={tryCloseRecoveryModal}>Close</Button>
+      <Button onclick={copyCodes} data-testid="copy-codes">
+        {recoveryCopied ? 'Copied' : 'Copy all'}
+      </Button>
+    </DialogFooter>
+  </DialogContent>
+</Dialog>
+
+<!-- Recovery code redeem modal -->
+<Dialog bind:open={redeemModalOpen}>
+  <DialogContent>
+    <DialogHeader>
+      <DialogTitle>Use a recovery code</DialogTitle>
+      <DialogDescription>
+        Each code works once. After redeeming, regenerate a fresh batch.
+      </DialogDescription>
+    </DialogHeader>
+
+    <div class="space-y-3 py-2">
+      <div class="space-y-1.5">
+        <Label for="recovery-code-input">Recovery code</Label>
+        <Input
+          id="recovery-code-input"
           type="text"
           bind:value={redeemCode}
           placeholder="AB12C-D3E4F"
           autocomplete="one-time-code"
-          spellcheck="false"
+          spellcheck={false}
           data-testid="recovery-code-input"
         />
-      </label>
-      {#if redeemError}
-        <p class="error" role="alert">{redeemError}</p>
-      {/if}
-      <div class="modal-actions">
-        <button type="button" onclick={closeRedeemModal} disabled={redeemInFlight}> Cancel </button>
-        <button
-          type="button"
-          onclick={confirmRedeem}
-          disabled={redeemInFlight}
-          data-testid="recovery-redeem-confirm"
-        >
-          {redeemInFlight ? 'Redeeming…' : 'Redeem'}
-        </button>
       </div>
-    </div>
-  </div>
-{/if}
 
-<style>
-  h1 {
-    font-size: 1.8rem;
-    margin-bottom: 1rem;
-  }
-  h2 {
-    font-size: 1.1rem;
-    margin: 1.5rem 0 0.5rem;
-  }
-  section {
-    max-width: 720px;
-    margin-bottom: 2rem;
-  }
-  .muted {
-    color: #555;
-  }
-  .error {
-    color: #b00020;
-  }
-  .section-actions {
-    display: flex;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-    margin: 0.5rem 0 0.75rem;
-  }
-  .section-actions button,
-  .mfa-actions button {
-    padding: 0.5rem 1rem;
-    background: #1a7f37;
-    color: #fff;
-    border: 0;
-    border-radius: 4px;
-    font-weight: 600;
-    cursor: pointer;
-  }
-  .section-actions button[disabled],
-  .mfa-actions button[disabled] {
-    background: #888;
-    cursor: not-allowed;
-  }
-  .mfa-prompt {
-    padding: 1rem 1.25rem;
-    background: #fff8e1;
-    border: 1px solid #f1d27a;
-    border-radius: 6px;
-  }
-  .mfa-prompt h2 {
-    margin-top: 0;
-    color: #8a6a00;
-  }
-  .mfa-actions {
-    display: flex;
-    gap: 0.5rem;
-    align-items: center;
-    flex-wrap: wrap;
-  }
-  .mfa-actions .link {
-    background: transparent;
-    color: #1a7f37;
-    text-decoration: underline;
-    padding: 0.5rem 0;
-  }
-  table {
-    width: 100%;
-    border-collapse: collapse;
-  }
-  th,
-  td {
-    text-align: left;
-    padding: 0.5rem 0.5rem;
-    border-bottom: 1px solid #eee;
-  }
-  th {
-    font-size: 0.85rem;
-    color: #555;
-    font-weight: 600;
-  }
-  button.danger {
-    padding: 0.4rem 0.8rem;
-    background: #b00020;
-    color: #fff;
-    border: 0;
-    border-radius: 4px;
-    font-weight: 600;
-    cursor: pointer;
-  }
-  button.danger[disabled] {
-    background: #888;
-    cursor: not-allowed;
-  }
-  pre {
-    background: #f6f8fa;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    padding: 0.75rem;
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 0.95rem;
-    white-space: pre-wrap;
-    word-break: break-all;
-  }
-  .modal-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.4);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 50;
-  }
-  .modal {
-    background: #fff;
-    border-radius: 8px;
-    padding: 1.25rem 1.5rem;
-    width: min(480px, 90vw);
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
-  }
-  .modal h3 {
-    margin: 0 0 0.5rem;
-  }
-  .modal label {
-    display: grid;
-    gap: 0.25rem;
-    font-weight: 600;
-    margin-top: 0.75rem;
-  }
-  .modal input {
-    padding: 0.4rem;
-    font: inherit;
-    border: 1px solid #bbb;
-    border-radius: 4px;
-    font-weight: 400;
-  }
-  .modal-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 0.5rem;
-    margin-top: 1rem;
-  }
-  .modal-actions button {
-    padding: 0.5rem 1rem;
-    border: 0;
-    border-radius: 4px;
-    font-weight: 600;
-    cursor: pointer;
-  }
-  .modal-actions button:first-child {
-    background: #eee;
-    color: #222;
-  }
-  .modal-actions button:last-child {
-    background: #1a7f37;
-    color: #fff;
-  }
-  .modal-actions button[disabled] {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-</style>
+      {#if redeemError}
+        <div class="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive" role="alert">
+          {redeemError}
+        </div>
+      {/if}
+    </div>
+
+    <DialogFooter>
+      <Button variant="outline" onclick={closeRedeemModal} disabled={redeemInFlight}>
+        Cancel
+      </Button>
+      <Button
+        onclick={confirmRedeem}
+        disabled={redeemInFlight}
+        data-testid="recovery-redeem-confirm"
+      >
+        {redeemInFlight ? 'Redeeming…' : 'Redeem'}
+      </Button>
+    </DialogFooter>
+  </DialogContent>
+</Dialog>

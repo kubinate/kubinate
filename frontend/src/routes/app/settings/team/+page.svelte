@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { SvelteSet } from 'svelte/reactivity';
   import {
     ApiError,
     createInvite,
@@ -11,6 +12,26 @@
   } from '$lib/api/team';
   import { getMe } from '$lib/api/me';
   import type { InviteView, MembershipRole, MembershipView } from '$lib/api/schemas';
+  import { Button } from '$lib/components/ui/button';
+  import { Badge } from '$lib/components/ui/badge';
+  import {
+    Card,
+    CardHeader,
+    CardTitle,
+    CardDescription,
+    CardContent
+  } from '$lib/components/ui/card';
+  import { Input } from '$lib/components/ui/input';
+  import { Label } from '$lib/components/ui/label';
+  import { Separator } from '$lib/components/ui/separator';
+  import {
+    Table,
+    TableHeader,
+    TableRow,
+    TableHead,
+    TableBody,
+    TableCell
+  } from '$lib/components/ui/table';
 
   // `null` => not loaded yet, `[]` => loaded but empty.
   let members = $state<MembershipView[] | null>(null);
@@ -29,13 +50,11 @@
 
   // Tracks per-row "in flight" so a slow PATCH can disable that row's
   // controls without freezing the whole page.
-  let busy = $state<Set<string>>(new Set());
+  const busy = new SvelteSet<string>();
 
   function setBusy(key: string, value: boolean) {
-    const next = new Set(busy);
-    if (value) next.add(key);
-    else next.delete(key);
-    busy = next;
+    if (value) busy.add(key);
+    else busy.delete(key);
   }
 
   function describe(err: unknown): string {
@@ -131,237 +150,205 @@
     if (new Date(invite.expires_at) < new Date()) return 'expired';
     return 'pending';
   }
+
+  function roleBadgeVariant(role: string): 'default' | 'secondary' | 'outline' {
+    if (role === 'owner' || role === 'admin') return 'default';
+    if (role === 'developer') return 'secondary';
+    return 'outline';
+  }
 </script>
 
 <svelte:head>
   <title>Team — Kubinate</title>
 </svelte:head>
 
-<h1>Team</h1>
+<h1 class="text-2xl font-semibold mb-6">Team</h1>
 
 {#if loadError}
-  <p class="error" role="alert">{loadError}</p>
+  <div class="mb-4 rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive" role="alert">
+    {loadError}
+  </div>
 {/if}
 
-<section class="invite">
-  <h2>Invite a teammate</h2>
-  <form onsubmit={onCreateInvite}>
-    <label>
-      Email
-      <input
-        type="email"
-        bind:value={inviteEmail}
-        autocomplete="off"
-        placeholder="teammate@example.com"
-        data-testid="invite-email"
-        required
-      />
-    </label>
-    <label>
-      Role
-      <select bind:value={inviteRole} data-testid="invite-role">
-        <option value="admin">Admin</option>
-        <option value="developer">Developer</option>
-        <option value="viewer">Viewer</option>
-      </select>
-    </label>
-    <button type="submit" disabled={inviteSubmitting} data-testid="invite-submit">
-      {inviteSubmitting ? 'Issuing…' : 'Send invite'}
-    </button>
-  </form>
-  {#if inviteFormError}
-    <p class="error" role="alert">{inviteFormError}</p>
-  {/if}
-
-  {#if lastIssuedToken}
-    <div class="token-callout" role="alert" data-testid="issued-token">
-      <p>Share this invite token with the recipient. We won't show it again.</p>
-      <code>{lastIssuedToken}</code>
-    </div>
-  {/if}
-</section>
-
-<section class="members">
-  <h2>Members</h2>
-  {#if members === null}
-    <p class="muted">Loading…</p>
-  {:else if members.length === 0}
-    <p class="muted">No members yet.</p>
-  {:else}
-    <table>
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Email</th>
-          <th>Role</th>
-          <th>Joined</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {#each members as member (member.user_id)}
-          <tr data-testid={`member-row-${member.user_id}`}>
-            <td>{member.display_name}</td>
-            <td>{member.email}</td>
-            <td>
-              <select
-                value={member.role}
-                onchange={(e) =>
-                  onRoleChange(
-                    member,
-                    (e.currentTarget as HTMLSelectElement).value as MembershipRole
-                  )}
-                disabled={busy.has(`role-${member.user_id}`)}
-                data-testid={`role-select-${member.user_id}`}
-              >
-                <option value="owner">Owner</option>
-                <option value="admin">Admin</option>
-                <option value="developer">Developer</option>
-                <option value="viewer">Viewer</option>
-              </select>
-            </td>
-            <td>{new Date(member.joined_at).toLocaleDateString()}</td>
-            <td>
-              <button
-                type="button"
-                onclick={() => onRemoveMember(member)}
-                disabled={busy.has(`remove-${member.user_id}`)}
-                data-testid={`remove-${member.user_id}`}
-              >
-                Remove
-              </button>
-            </td>
-          </tr>
+<!-- Section 1: Members -->
+<Card class="mb-6">
+  <CardHeader>
+    <CardTitle>Members</CardTitle>
+    <CardDescription>Manage the people in your organization.</CardDescription>
+  </CardHeader>
+  <CardContent>
+    {#if members === null}
+      <div class="space-y-2">
+        {#each [1, 2, 3] as _ (_.toString())}
+          <div class="h-10 rounded-md bg-muted animate-pulse"></div>
         {/each}
-      </tbody>
-    </table>
-  {/if}
-</section>
+      </div>
+    {:else if members.length === 0}
+      <p class="text-sm text-muted-foreground">No members yet.</p>
+    {:else}
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Member</TableHead>
+            <TableHead>Role</TableHead>
+            <TableHead>Joined</TableHead>
+            <TableHead class="w-[180px]">Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {#each members as member (member.user_id)}
+            <TableRow data-testid={`member-row-${member.user_id}`}>
+              <TableCell>
+                <div class="flex flex-col">
+                  <span class="font-medium text-sm">{member.display_name}</span>
+                  <span class="text-xs text-muted-foreground">{member.email}</span>
+                </div>
+              </TableCell>
+              <TableCell>
+                <Badge variant={roleBadgeVariant(member.role)}>
+                  {member.role}
+                </Badge>
+              </TableCell>
+              <TableCell class="text-sm text-muted-foreground">
+                {new Date(member.joined_at).toLocaleDateString()}
+              </TableCell>
+              <TableCell>
+                <div class="flex items-center gap-2">
+                  <select
+                    value={member.role}
+                    onchange={(e) =>
+                      onRoleChange(
+                        member,
+                        (e.currentTarget as HTMLSelectElement).value as MembershipRole
+                      )}
+                    disabled={busy.has(`role-${member.user_id}`)}
+                    data-testid={`role-select-${member.user_id}`}
+                    class="h-8 rounded-md border border-input bg-background px-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <option value="owner">Owner</option>
+                    <option value="admin">Admin</option>
+                    <option value="developer">Developer</option>
+                    <option value="viewer">Viewer</option>
+                  </select>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onclick={() => onRemoveMember(member)}
+                    disabled={busy.has(`remove-${member.user_id}`)}
+                    data-testid={`remove-${member.user_id}`}
+                  >
+                    Remove
+                  </Button>
+                </div>
+              </TableCell>
+            </TableRow>
+          {/each}
+        </TableBody>
+      </Table>
+    {/if}
+  </CardContent>
+</Card>
 
-<section class="invites">
-  <h2>Invites</h2>
-  {#if invites === null}
-    <p class="muted">Loading…</p>
-  {:else if invites.length === 0}
-    <p class="muted">No invites issued yet.</p>
-  {:else}
-    <table>
-      <thead>
-        <tr>
-          <th>Email</th>
-          <th>Role</th>
-          <th>Status</th>
-          <th>Expires</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {#each invites as invite (invite.id)}
-          <tr>
-            <td>{invite.email}</td>
-            <td>{invite.role}</td>
-            <td>{inviteStatus(invite)}</td>
-            <td>{new Date(invite.expires_at).toLocaleString()}</td>
-            <td>
-              {#if inviteStatus(invite) === 'pending'}
-                <button
-                  type="button"
-                  onclick={() => onRevokeInvite(invite)}
-                  disabled={busy.has(`invite-${invite.id}`)}
-                  data-testid={`revoke-${invite.id}`}
-                >
-                  Revoke
-                </button>
-              {/if}
-            </td>
-          </tr>
-        {/each}
-      </tbody>
-    </table>
-  {/if}
-</section>
+<Separator class="my-6" />
 
-<style>
-  h1 {
-    font-size: 1.8rem;
-    margin-bottom: 1rem;
-  }
-  h2 {
-    font-size: 1.1rem;
-    margin: 1.5rem 0 0.5rem;
-  }
-  section {
-    max-width: 720px;
-  }
-  form {
-    display: grid;
-    grid-template-columns: 1fr max-content max-content;
-    gap: 0.75rem;
-    align-items: end;
-  }
-  label {
-    display: grid;
-    gap: 0.25rem;
-    font-weight: 600;
-  }
-  input,
-  select {
-    padding: 0.4rem;
-    font: inherit;
-    border: 1px solid #bbb;
-    border-radius: 4px;
-    font-weight: 400;
-  }
-  button {
-    padding: 0.5rem 1rem;
-    background: #222;
-    color: #fff;
-    border: 0;
-    border-radius: 4px;
-    font-weight: 600;
-    cursor: pointer;
-  }
-  button[disabled] {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-top: 0.5rem;
-  }
-  th,
-  td {
-    padding: 0.4rem 0.5rem;
-    text-align: left;
-    border-bottom: 1px solid #eee;
-  }
-  th {
-    font-size: 0.85rem;
-    color: #555;
-    font-weight: 600;
-  }
-  .muted {
-    color: #555;
-  }
-  .error {
-    color: #b00020;
-  }
-  .token-callout {
-    margin-top: 1rem;
-    padding: 0.75rem 1rem;
-    background: #fff8e1;
-    border: 1px solid #f0c95a;
-    border-radius: 6px;
-  }
-  .token-callout code {
-    display: block;
-    margin-top: 0.5rem;
-    padding: 0.5rem;
-    background: #fff;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    font-family: ui-monospace, Menlo, monospace;
-    word-break: break-all;
-  }
-</style>
+<!-- Section 2: Invite -->
+<Card>
+  <CardHeader>
+    <CardTitle>Invite member</CardTitle>
+    <CardDescription>Send an invite link to a new team member.</CardDescription>
+  </CardHeader>
+  <CardContent class="space-y-6">
+    <form onsubmit={onCreateInvite} class="flex flex-col gap-3 sm:flex-row sm:items-end">
+      <div class="flex-1 space-y-1.5">
+        <Label for="invite-email">Email address</Label>
+        <Input
+          id="invite-email"
+          type="email"
+          bind:value={inviteEmail}
+          autocomplete="off"
+          placeholder="teammate@example.com"
+          data-testid="invite-email"
+          required
+        />
+      </div>
+      <div class="space-y-1.5">
+        <Label for="invite-role">Role</Label>
+        <select
+          id="invite-role"
+          bind:value={inviteRole}
+          data-testid="invite-role"
+          class="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+        >
+          <option value="admin">Admin</option>
+          <option value="developer">Developer</option>
+          <option value="viewer">Viewer</option>
+        </select>
+      </div>
+      <Button type="submit" disabled={inviteSubmitting} data-testid="invite-submit">
+        {inviteSubmitting ? 'Issuing…' : 'Send invite'}
+      </Button>
+    </form>
+
+    {#if inviteFormError}
+      <div class="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive" role="alert">
+        {inviteFormError}
+      </div>
+    {/if}
+
+    {#if lastIssuedToken}
+      <div class="rounded-md border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/40 p-4" role="alert" data-testid="issued-token">
+        <p class="text-sm font-medium text-amber-800 dark:text-amber-300 mb-2">
+          Copy and share this invite link — it will not be shown again.
+        </p>
+        <code class="block rounded border border-amber-200 dark:border-amber-800 bg-white dark:bg-zinc-900 px-3 py-2 font-mono text-sm break-all select-all text-zinc-900 dark:text-zinc-100">
+          {lastIssuedToken}
+        </code>
+      </div>
+    {/if}
+
+    <!-- Pending invites subsection -->
+    {#if invites && invites.length > 0}
+      <div>
+        <h3 class="text-sm font-semibold mb-3 text-foreground">Pending invites</h3>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Email</TableHead>
+              <TableHead>Role</TableHead>
+              <TableHead>Expires</TableHead>
+              <TableHead class="w-[100px]">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {#each invites as invite (invite.id)}
+              <TableRow>
+                <TableCell class="text-sm">{invite.email}</TableCell>
+                <TableCell>
+                  <Badge variant={roleBadgeVariant(invite.role)}>{invite.role}</Badge>
+                </TableCell>
+                <TableCell class="text-sm text-muted-foreground">
+                  {new Date(invite.expires_at).toLocaleString()}
+                </TableCell>
+                <TableCell>
+                  {#if inviteStatus(invite) === 'pending'}
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onclick={() => onRevokeInvite(invite)}
+                      disabled={busy.has(`invite-${invite.id}`)}
+                      data-testid={`revoke-${invite.id}`}
+                    >
+                      Revoke
+                    </Button>
+                  {:else}
+                    <span class="text-xs text-muted-foreground capitalize">{inviteStatus(invite)}</span>
+                  {/if}
+                </TableCell>
+              </TableRow>
+            {/each}
+          </TableBody>
+        </Table>
+      </div>
+    {/if}
+  </CardContent>
+</Card>
