@@ -4,7 +4,9 @@
 //! asserts on both the outbound request shape and the inbound response
 //! mapping. No real VictoriaMetrics instance is required.
 
-use kubinate_observability::metrics::{Label, RangeQuery, Sample, VictoriaMetricsStore, MetricsStore};
+use kubinate_observability::metrics::{
+    Label, MetricsStore, RangeQuery, Sample, VictoriaMetricsStore,
+};
 use uuid::Uuid;
 use wiremock::{
     matchers::{method, path, query_param_contains},
@@ -93,7 +95,10 @@ async fn ingest_empty_slice_skips_http_call() {
     // No mock registered — any HTTP call would panic the server.
 
     let store = VictoriaMetricsStore::new(server.uri()).expect("store init");
-    let n = store.ingest(Uuid::now_v7(), vec![]).await.expect("ingest empty");
+    let n = store
+        .ingest(Uuid::now_v7(), vec![])
+        .await
+        .expect("ingest empty");
     assert_eq!(n, 0);
 }
 
@@ -127,10 +132,7 @@ async fn query_injects_organization_id_into_promql() {
     Mock::given(method("GET"))
         .and(path("/api/v1/query_range"))
         .and(query_param_contains("query", org_str.as_str()))
-        .respond_with(
-            ResponseTemplate::new(200)
-                .set_body_json(prom_matrix_response(&[])),
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_json(prom_matrix_response(&[])))
         .expect(1)
         .mount(&server)
         .await;
@@ -229,10 +231,16 @@ async fn query_strips_organization_id_from_returned_labels() {
     assert_eq!(samples.len(), 1);
     // organization_id must be stripped — it's ambient context, not a label.
     assert!(
-        !samples[0].labels.iter().any(|l| l.name == "organization_id"),
+        !samples[0]
+            .labels
+            .iter()
+            .any(|l| l.name == "organization_id"),
         "organization_id should not appear in returned labels"
     );
-    assert!(samples[0].labels.iter().any(|l| l.name == "method" && l.value == "GET"));
+    assert!(samples[0]
+        .labels
+        .iter()
+        .any(|l| l.name == "method" && l.value == "GET"));
 }
 
 #[tokio::test]
@@ -258,5 +266,8 @@ async fn query_returns_backend_error_on_non_2xx() {
         .await
         .expect_err("should fail");
 
-    assert!(err.to_string().contains("429"), "error should mention status");
+    assert!(
+        err.to_string().contains("429"),
+        "error should mention status"
+    );
 }

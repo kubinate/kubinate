@@ -218,26 +218,27 @@ async fn main() -> anyhow::Result<()> {
     let helm_executor = Arc::new(HelmCliExecutor::new(None));
     let kubectl_executor = Arc::new(KubectlCliExecutor::new(None));
     let event_hub = kubinate_workflows::events::shared_hub();
-    let metrics_store: Arc<dyn kubinate_observability::metrics::MetricsStore> =
-        match std::env::var("KUBINATE__METRICS_BACKEND")
-            .as_deref()
-            .unwrap_or("memory")
-        {
-            "memory" => Arc::new(kubinate_observability::metrics::InMemoryMetricsStore::new()),
-            "victoria_metrics" => {
-                let url = std::env::var("KUBINATE__VICTORIA_METRICS_URL").context(
+    let metrics_store: Arc<dyn kubinate_observability::metrics::MetricsStore> = match std::env::var(
+        "KUBINATE__METRICS_BACKEND",
+    )
+    .as_deref()
+    .unwrap_or("memory")
+    {
+        "memory" => Arc::new(kubinate_observability::metrics::InMemoryMetricsStore::new()),
+        "victoria_metrics" => {
+            let url = std::env::var("KUBINATE__VICTORIA_METRICS_URL").context(
                     "KUBINATE__VICTORIA_METRICS_URL required when KUBINATE__METRICS_BACKEND=victoria_metrics",
                 )?;
-                tracing::info!(url = %url, "metrics backend: victoria metrics");
-                Arc::new(
-                    kubinate_observability::metrics::VictoriaMetricsStore::new(&url)
-                        .context("victoria metrics store init")?,
-                )
-            }
-            other => anyhow::bail!(
-                "KUBINATE__METRICS_BACKEND must be 'memory' or 'victoria_metrics'; got '{other}'"
-            ),
-        };
+            tracing::info!(url = %url, "metrics backend: victoria metrics");
+            Arc::new(
+                kubinate_observability::metrics::VictoriaMetricsStore::new(&url)
+                    .context("victoria metrics store init")?,
+            )
+        }
+        other => anyhow::bail!(
+            "KUBINATE__METRICS_BACKEND must be 'memory' or 'victoria_metrics'; got '{other}'"
+        ),
+    };
 
     // Sprint 4 ticket 05 — WebAuthn opt-in: only build the
     // `Ceremonies` facade if both required env vars are present.

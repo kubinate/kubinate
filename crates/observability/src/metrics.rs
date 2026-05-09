@@ -29,7 +29,6 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 
-
 /// Errors surfaced by [`MetricsStore`].
 #[derive(Debug, Error)]
 pub enum MetricsError {
@@ -308,7 +307,13 @@ impl VictoriaMetricsStore {
                 .collect();
             parts.push(format!("organization_id=\"{organization_id}\""));
 
-            let _ = writeln!(out, "{name}{{{}}}\t{} {}", parts.join(","), s.value, s.timestamp_ms);
+            let _ = writeln!(
+                out,
+                "{name}{{{}}}\t{} {}",
+                parts.join(","),
+                s.value,
+                s.timestamp_ms
+            );
         }
         out
     }
@@ -380,7 +385,11 @@ impl MetricsStore for VictoriaMetricsStore {
                 ("query", selector.as_str()),
                 (
                     "start",
-                    &format!("{}.{:03}", query.start_ms / 1000, query.start_ms.abs() % 1000),
+                    &format!(
+                        "{}.{:03}",
+                        query.start_ms / 1000,
+                        query.start_ms.abs() % 1000
+                    ),
                 ),
                 (
                     "end",
@@ -413,9 +422,9 @@ impl MetricsStore for VictoriaMetricsStore {
             )));
         }
 
-        let data = envelope.data.unwrap_or_else(|| prom_resp::Data {
-            result: Vec::new(),
-        });
+        let data = envelope
+            .data
+            .unwrap_or_else(|| prom_resp::Data { result: Vec::new() });
 
         let mut samples = Vec::new();
         for series in data.result {
@@ -438,9 +447,9 @@ impl MetricsStore for VictoriaMetricsStore {
                 // for timestamps in the reasonable range (year 1970–2262).
                 #[allow(clippy::cast_possible_truncation)]
                 let timestamp_ms = (ts_f * 1000.0).round() as i64;
-                let value: f64 = val_str
-                    .parse()
-                    .map_err(|e| MetricsError::Backend(anyhow::anyhow!("parse sample value: {e}")))?;
+                let value: f64 = val_str.parse().map_err(|e| {
+                    MetricsError::Backend(anyhow::anyhow!("parse sample value: {e}"))
+                })?;
                 samples.push(Sample {
                     labels: labels.clone(),
                     timestamp_ms,
