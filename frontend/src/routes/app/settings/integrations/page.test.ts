@@ -197,7 +197,15 @@ describe('settings/integrations — add credential', () => {
     installFetch(async (url, init) => {
       const method = (init?.method ?? 'GET').toUpperCase();
       if (url.endsWith('/api/v1/integrations/hetzner') && method === 'POST') {
-        return fakeResponse({ detail: 'internal error' }, 500);
+        return fakeResponse(
+          {
+            type: 'about:blank',
+            title: 'Internal Server Error',
+            status: 500,
+            detail: 'create credential failed'
+          },
+          500
+        );
       }
       return fakeResponse({}, 404);
     });
@@ -236,10 +244,9 @@ describe('settings/integrations — add credential', () => {
     await fireEvent.click(saveButton);
 
     await waitFor(() => {
-      // The error thrown by createCredential contains "create credential".
       const alerts = document.body.querySelectorAll('[role="alert"]');
       const found = Array.from(alerts).some((el) =>
-        (el.textContent ?? '').includes('create credential')
+        (el.textContent ?? '').includes('create credential failed')
       );
       expect(found).toBe(true);
     });

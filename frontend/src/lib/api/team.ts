@@ -11,18 +11,24 @@ import {
 } from './schemas';
 
 /**
- * Mirrors the `ApiError` from `clusters.ts`. Pulled out of that file
- * eventually — for now both helpers carry it independently to keep
- * import surfaces narrow per page.
+ * Mirrors the `ApiError` from `_problem.ts`. Carried independently
+ * here to keep import surfaces narrow per page, but extended with
+ * the `code` field (Sprint 4 ticket 05) so callers can branch on
+ * `isMfaRequired()` without importing from `_problem` directly.
  */
 export class ApiError extends Error {
   constructor(
     public readonly status: number,
     public readonly title: string,
-    public readonly detail: string
+    public readonly detail: string,
+    public readonly code?: string
   ) {
     super(`${status} ${title}: ${detail}`);
     this.name = 'ApiError';
+  }
+
+  isMfaRequired(): boolean {
+    return this.code === 'mfa_required';
   }
 }
 
@@ -31,7 +37,7 @@ async function parseResponse<T>(response: Response, schema: z.ZodTypeAny | null)
   if (!response.ok) {
     try {
       const problem = problemDetailsSchema.parse(JSON.parse(text));
-      throw new ApiError(problem.status, problem.title, problem.detail);
+      throw new ApiError(problem.status, problem.title, problem.detail, problem.code);
     } catch (err) {
       if (err instanceof ApiError) {
         throw err;

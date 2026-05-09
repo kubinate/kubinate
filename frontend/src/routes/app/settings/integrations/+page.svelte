@@ -1,6 +1,8 @@
 <script lang="ts">
   import type { CredentialView } from '$lib/api/schemas';
   import { createCredential, deleteCredential } from '$lib/api/credentials';
+  import { ApiError } from '$lib/api/_problem';
+  import { goto } from '$app/navigation';
   import { Button } from '$lib/components/ui/button';
   import {
     Card,
@@ -82,6 +84,10 @@
       added = [created, ...added];
       addOpen = false;
     } catch (err) {
+      if (err instanceof ApiError && err.isMfaRequired()) {
+        await goto('/app/settings/security?mfa=required');
+        return;
+      }
       addError = err instanceof Error ? err.message : 'Unexpected error';
     } finally {
       addSubmitting = false;
@@ -122,6 +128,10 @@
       deleteOpen = false;
       deletingId = null;
     } catch (err) {
+      if (err instanceof ApiError && err.isMfaRequired()) {
+        await goto('/app/settings/security?mfa=required');
+        return;
+      }
       deleteError = err instanceof Error ? err.message : 'Unexpected error';
     } finally {
       deleting = false;

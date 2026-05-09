@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-use crate::{actor::Actor, audit_ctx, problem::ApiError, AppState};
+use crate::{actor::{Actor, OwnerActor}, audit_ctx, problem::ApiError, AppState};
 
 /// Mount the Hetzner credential routes under `/v1/integrations/hetzner`.
 pub fn routes() -> Router<AppState> {
@@ -54,10 +54,11 @@ impl From<HetznerCredential> for CredentialView {
 
 async fn create(
     State(state): State<AppState>,
-    actor: Actor,
+    owner: OwnerActor,
     headers: HeaderMap,
     Json(req): Json<CreateRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
+    let actor = owner.inner;
     if req.alias.trim().is_empty() {
         return Err(ApiError::from(PlatformError::Invalid(
             "alias must not be empty".into(),
@@ -91,10 +92,11 @@ async fn list(
 
 async fn remove(
     State(state): State<AppState>,
-    actor: Actor,
+    owner: OwnerActor,
     headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, ApiError> {
+    let actor = owner.inner;
     let audit = audit_ctx::from_actor_and_headers(&actor, &headers);
     state
         .hetzner_service

@@ -11,6 +11,7 @@
     updateMemberRole
   } from '$lib/api/team';
   import { getMe } from '$lib/api/me';
+  import { goto } from '$app/navigation';
   import type { InviteView, MembershipRole, MembershipView } from '$lib/api/schemas';
   import { Button } from '$lib/components/ui/button';
   import { Badge } from '$lib/components/ui/badge';
@@ -99,6 +100,10 @@
       inviteEmail = '';
       await refresh();
     } catch (err) {
+      if (err instanceof ApiError && err.isMfaRequired()) {
+        await goto('/app/settings/security?mfa=required');
+        return;
+      }
       inviteFormError = describe(err);
     } finally {
       inviteSubmitting = false;
@@ -112,6 +117,10 @@
       await updateMemberRole(organizationId, member.user_id, role);
       await refresh();
     } catch (err) {
+      if (err instanceof ApiError && err.isMfaRequired()) {
+        await goto('/app/settings/security?mfa=required');
+        return;
+      }
       loadError = describe(err);
     } finally {
       setBusy(`role-${member.user_id}`, false);
@@ -125,6 +134,10 @@
       await removeMember(organizationId, member.user_id);
       await refresh();
     } catch (err) {
+      if (err instanceof ApiError && err.isMfaRequired()) {
+        await goto('/app/settings/security?mfa=required');
+        return;
+      }
       loadError = describe(err);
     } finally {
       setBusy(`remove-${member.user_id}`, false);
@@ -138,6 +151,10 @@
       await revokeInvite(organizationId, invite.id);
       await refresh();
     } catch (err) {
+      if (err instanceof ApiError && err.isMfaRequired()) {
+        await goto('/app/settings/security?mfa=required');
+        return;
+      }
       loadError = describe(err);
     } finally {
       setBusy(`invite-${invite.id}`, false);

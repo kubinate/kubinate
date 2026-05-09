@@ -24,7 +24,7 @@ use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::{
-    actor::{Actor, SessionUser},
+    actor::{Actor, OwnerActor, SessionUser},
     audit_ctx,
     problem::ApiError,
     AppState,
@@ -91,11 +91,12 @@ impl From<Invite> for InviteView {
 
 async fn create_invite(
     State(state): State<AppState>,
-    actor: Actor,
+    owner: OwnerActor,
     headers: HeaderMap,
     Path(org_id): Path<Uuid>,
     Json(req): Json<CreateInviteRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
+    let actor = owner.inner;
     require_self_org(&actor, org_id)?;
     let audit = audit_ctx::from_actor_and_headers(&actor, &headers);
     let created = state
@@ -131,10 +132,11 @@ async fn list_invites(
 
 async fn revoke_invite(
     State(state): State<AppState>,
-    actor: Actor,
+    owner: OwnerActor,
     headers: HeaderMap,
     Path((org_id, id)): Path<(Uuid, Uuid)>,
 ) -> Result<StatusCode, ApiError> {
+    let actor = owner.inner;
     require_self_org(&actor, org_id)?;
     let audit = audit_ctx::from_actor_and_headers(&actor, &headers);
     state
@@ -166,11 +168,12 @@ struct UpdateRoleRequest {
 
 async fn update_role(
     State(state): State<AppState>,
-    actor: Actor,
+    owner: OwnerActor,
     headers: HeaderMap,
     Path((org_id, user_id)): Path<(Uuid, Uuid)>,
     Json(req): Json<UpdateRoleRequest>,
 ) -> Result<StatusCode, ApiError> {
+    let actor = owner.inner;
     require_self_org(&actor, org_id)?;
     let audit = audit_ctx::from_actor_and_headers(&actor, &headers);
     state
@@ -183,10 +186,11 @@ async fn update_role(
 
 async fn remove_member(
     State(state): State<AppState>,
-    actor: Actor,
+    owner: OwnerActor,
     headers: HeaderMap,
     Path((org_id, user_id)): Path<(Uuid, Uuid)>,
 ) -> Result<StatusCode, ApiError> {
+    let actor = owner.inner;
     require_self_org(&actor, org_id)?;
     let audit = audit_ctx::from_actor_and_headers(&actor, &headers);
     state

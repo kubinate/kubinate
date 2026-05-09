@@ -1,8 +1,5 @@
 /**
- * Sprint 5 ticket 07 — MFA state banner.
- *
- * The banner renders only for `must_enrol`; all other states
- * (including null) produce no DOM output.
+ * MFA state banner — covers both the enrol and assert states.
  */
 
 import { render } from '@testing-library/svelte';
@@ -21,11 +18,22 @@ describe('MfaBanner', () => {
     expect(link).toHaveAttribute('href', '/app/settings/security');
   });
 
-  it.each<MfaState | null>(['enrolled', 'must_assert', 'not_required', null])(
-    'renders nothing for mfaState=%s',
+  it('shows the assert banner when mfaState is must_assert', () => {
+    const { getByTestId } = render(MfaBanner, { props: { mfaState: 'must_assert' } });
+    const banner = getByTestId('mfa-assert-banner');
+    expect(banner).toBeInTheDocument();
+    expect(banner).toHaveAttribute('role', 'alert');
+    expect(banner.textContent).toContain('Verify with your passkey');
+    const link = banner.querySelector('a');
+    expect(link).toHaveAttribute('href', '/app/settings/security?mfa=required');
+  });
+
+  it.each<MfaState | null>(['enrolled', 'not_required', null])(
+    'renders no banner for mfaState=%s',
     (state) => {
       const { queryByTestId } = render(MfaBanner, { props: { mfaState: state } });
       expect(queryByTestId('mfa-enrol-banner')).toBeNull();
+      expect(queryByTestId('mfa-assert-banner')).toBeNull();
     }
   );
 });

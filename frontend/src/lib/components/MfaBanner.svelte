@@ -15,6 +15,13 @@
   </div>
 {/if}
 
+{#if mfaState === 'must_assert'}
+  <div data-testid="mfa-assert-banner" role="alert" class="banner banner--assert">
+    Verify with your passkey to unlock admin actions.
+    <a href="/app/settings/security?mfa=required">Verify now →</a>
+  </div>
+{/if}
+
 <style>
   .banner {
     display: flex;
@@ -29,6 +36,18 @@
 
   .banner a {
     color: #92400e;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .banner--assert {
+    background-color: #eff6ff;
+    border-color: #93c5fd;
+    color: #1e3a5f;
+  }
+
+  .banner--assert a {
+    color: #1d4ed8;
     font-weight: 600;
     white-space: nowrap;
   }
