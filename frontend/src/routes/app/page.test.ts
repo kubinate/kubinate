@@ -62,7 +62,12 @@ describe('app dashboard page', () => {
   });
 
   it('renders cluster name, status badge, and region for a ready cluster', () => {
-    const cluster = makeCluster({ id: 'abc-123', name: 'prod-eu', status: 'ready', region: 'nbg1' });
+    const cluster = makeCluster({
+      id: 'abc-123',
+      name: 'prod-eu',
+      status: 'ready',
+      region: 'nbg1'
+    });
 
     const { getByText, getAllByText } = render(AppPage, {
       props: { data: makeData([cluster]) }

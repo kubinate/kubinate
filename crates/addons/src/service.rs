@@ -86,10 +86,7 @@ mod tests {
         // `catalog::lookup` returns `Invalid` for empty-version paths
         // by going through the catalog first — so this test asserts
         // the helper still distinguishes empty version from valid.
-        assert!(matches!(
-            pre_check(&new),
-            Err(PlatformError::Invalid(_))
-        ));
+        assert!(matches!(pre_check(&new), Err(PlatformError::Invalid(_))));
     }
 
     #[test]
