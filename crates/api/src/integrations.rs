@@ -18,7 +18,12 @@ use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-use crate::{actor::{Actor, OwnerActor}, audit_ctx, problem::ApiError, AppState};
+use crate::{
+    actor::{Actor, OwnerActor},
+    audit_ctx,
+    problem::ApiError,
+    AppState,
+};
 
 /// Mount the Hetzner credential routes under `/v1/integrations/hetzner`.
 pub fn routes() -> Router<AppState> {
