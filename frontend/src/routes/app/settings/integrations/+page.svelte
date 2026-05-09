@@ -164,7 +164,7 @@
           <TableRow>
             <TableHead>Alias</TableHead>
             <TableHead>Added</TableHead>
-            <TableHead class="w-[100px]">Actions</TableHead>
+            <TableHead class="w-25">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>

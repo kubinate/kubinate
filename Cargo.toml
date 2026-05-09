@@ -12,6 +12,7 @@ members = [
     "crates/workflows",
     "crates/agent-proto",
     "crates/e2e",
+    "crates/vault-migrate",
     "agent",
 ]
 
