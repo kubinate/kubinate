@@ -122,27 +122,42 @@ describe('settings/integrations — add credential', () => {
       expect(document.body.textContent ?? '').toContain('Add Hetzner token');
     });
 
-    const aliasInput = document.body.querySelector('[data-testid="add-alias-input"]') as HTMLInputElement;
-    const tokenInput = document.body.querySelector('[data-testid="add-token-input"]') as HTMLInputElement;
+    const aliasInput = document.body.querySelector(
+      '[data-testid="add-alias-input"]'
+    ) as HTMLInputElement;
+    const tokenInput = document.body.querySelector(
+      '[data-testid="add-token-input"]'
+    ) as HTMLInputElement;
     expect(aliasInput).not.toBeNull();
     expect(tokenInput).not.toBeNull();
 
     // Fill in alias and token. Svelte 5's bind:value reads event.target.value
     // on both 'input' and 'change' events. We set the property directly first
     // then dispatch an 'input' event so the reactive binding updates.
-    Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set?.call(aliasInput, 'new-token');
+    Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set?.call(
+      aliasInput,
+      'new-token'
+    );
     aliasInput.dispatchEvent(new Event('input', { bubbles: true }));
-    Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set?.call(tokenInput, 'hv1_supersecret');
+    Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set?.call(
+      tokenInput,
+      'hv1_supersecret'
+    );
     tokenInput.dispatchEvent(new Event('input', { bubbles: true }));
 
-    const saveButton = document.body.querySelector('[data-testid="add-token-confirm"]') as HTMLElement;
+    const saveButton = document.body.querySelector(
+      '[data-testid="add-token-confirm"]'
+    ) as HTMLElement;
     await fireEvent.click(saveButton);
 
     await waitFor(() => {
       expect(
         fetchStub.mock.calls.some(([input, init]) => {
           const url = typeof input === 'string' ? input : input.toString();
-          return url.endsWith('/api/v1/integrations/hetzner') && (init?.method ?? '').toUpperCase() === 'POST';
+          return (
+            url.endsWith('/api/v1/integrations/hetzner') &&
+            (init?.method ?? '').toUpperCase() === 'POST'
+          );
         })
       ).toBe(true);
     });
@@ -165,7 +180,9 @@ describe('settings/integrations — add credential', () => {
     });
 
     // Leave alias empty — click Save immediately.
-    const saveButton = document.body.querySelector('[data-testid="add-token-confirm"]') as HTMLElement;
+    const saveButton = document.body.querySelector(
+      '[data-testid="add-token-confirm"]'
+    ) as HTMLElement;
     await fireEvent.click(saveButton);
 
     await waitFor(() => {
@@ -195,21 +212,35 @@ describe('settings/integrations — add credential', () => {
       expect(document.body.textContent ?? '').toContain('Add Hetzner token');
     });
 
-    const aliasInput = document.body.querySelector('[data-testid="add-alias-input"]') as HTMLInputElement;
-    const tokenInput = document.body.querySelector('[data-testid="add-token-input"]') as HTMLInputElement;
+    const aliasInput = document.body.querySelector(
+      '[data-testid="add-alias-input"]'
+    ) as HTMLInputElement;
+    const tokenInput = document.body.querySelector(
+      '[data-testid="add-token-input"]'
+    ) as HTMLInputElement;
 
-    Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set?.call(aliasInput, 'staging');
+    Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set?.call(
+      aliasInput,
+      'staging'
+    );
     aliasInput.dispatchEvent(new Event('input', { bubbles: true }));
-    Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set?.call(tokenInput, 'hv1_bad');
+    Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set?.call(
+      tokenInput,
+      'hv1_bad'
+    );
     tokenInput.dispatchEvent(new Event('input', { bubbles: true }));
 
-    const saveButton = document.body.querySelector('[data-testid="add-token-confirm"]') as HTMLElement;
+    const saveButton = document.body.querySelector(
+      '[data-testid="add-token-confirm"]'
+    ) as HTMLElement;
     await fireEvent.click(saveButton);
 
     await waitFor(() => {
       // The error thrown by createCredential contains "create credential".
       const alerts = document.body.querySelectorAll('[role="alert"]');
-      const found = Array.from(alerts).some((el) => (el.textContent ?? '').includes('create credential'));
+      const found = Array.from(alerts).some((el) =>
+        (el.textContent ?? '').includes('create credential')
+      );
       expect(found).toBe(true);
     });
   });
@@ -240,7 +271,9 @@ describe('settings/integrations — delete credential', () => {
       expect(document.body.textContent ?? '').toContain('Remove token');
     });
 
-    const confirmButton = document.body.querySelector('[data-testid="delete-confirm"]') as HTMLElement;
+    const confirmButton = document.body.querySelector(
+      '[data-testid="delete-confirm"]'
+    ) as HTMLElement;
     expect(confirmButton).not.toBeNull();
     await fireEvent.click(confirmButton);
 
@@ -248,7 +281,10 @@ describe('settings/integrations — delete credential', () => {
       expect(
         fetchStub.mock.calls.some(([input, init]) => {
           const url = typeof input === 'string' ? input : input.toString();
-          return url.includes(`/api/v1/integrations/hetzner/${CRED_A.id}`) && (init?.method ?? '').toUpperCase() === 'DELETE';
+          return (
+            url.includes(`/api/v1/integrations/hetzner/${CRED_A.id}`) &&
+            (init?.method ?? '').toUpperCase() === 'DELETE'
+          );
         })
       ).toBe(true);
     });
