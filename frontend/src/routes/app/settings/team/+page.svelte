@@ -212,7 +212,7 @@
             <TableHead>Member</TableHead>
             <TableHead>Role</TableHead>
             <TableHead>Joined</TableHead>
-            <TableHead class="w-[180px]">Actions</TableHead>
+            <TableHead class="w-45">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -345,7 +345,7 @@
               <TableHead>Email</TableHead>
               <TableHead>Role</TableHead>
               <TableHead>Expires</TableHead>
-              <TableHead class="w-[100px]">Actions</TableHead>
+              <TableHead class="w-25">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
