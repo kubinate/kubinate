@@ -1,0 +1,23 @@
+[package]
+name = "kubinate-vault-migrate"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "One-shot migration binary: re-encrypts pgcrypto secrets into Vault transit (ADR-0007)."
+
+[[bin]]
+name = "kubinate-vault-migrate"
+path = "src/main.rs"
+
+[dependencies]
+kubinate-platform = { path = "../platform" }
+
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+sqlx = { workspace = true, features = ["postgres", "uuid", "runtime-tokio-native-tls"] }
+uuid.workspace = true
+secrecy.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+clap = { version = "4", features = ["derive", "env"] }

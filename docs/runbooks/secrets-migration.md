@@ -18,7 +18,7 @@ from the Phase 0–2 `PgcryptoStore` (envelope-encrypted blobs in
 `secret/data/kubinate/<organization_id>/<secret_id>`). The
 authoritative cutover signal is the `KUBINATE__SECRETS_BACKEND` env
 var (`pgcrypto` → `vault`) on the API binary; the migration binary
-(`kubinate-vault-migrate`, name TBC at Sprint 5 build) is what
+(`kubinate-vault-migrate`, shipped in Sprint 5 ticket #04) is what
 actually moves the bytes.
 
 > **This runbook is a stub.** Sprint 4 ticket 02 ships the
@@ -112,29 +112,33 @@ cutover.
 ```bash
 kubinate-vault-migrate \
   --dry-run \
-  --pg-url "$KUBINATE__DATABASE_URL" \
+  --database-url "$KUBINATE__DATABASE_URL" \
   --vault-addr "$KUBINATE__VAULT_ADDR" \
   --vault-token "$KUBINATE__VAULT_TOKEN" \
-  --concurrency 8 \
-  | tee migrate-dry-run-$(date -u +%Y%m%dT%H%M%SZ).log
+  --kek "$KUBINATE__KEK" \
+  --batch-size 100 \
+  2>&1 | tee migrate-dry-run-$(date -u +%Y%m%dT%H%M%SZ).log
 ```
 
-Expected output: a per-row line `org=<uuid> secret=<uuid>
-algorithm=pgp_sym_v1 → vault_transit_v1 BYTES <n>`. **No** writes
-to Vault. **No** writes to Postgres. Failures here are read-side
-problems (KEK mismatch, RLS misconfiguration) and abort the
-cutover.
+Expected output: structured JSON log lines (`tracing` output) with
+`secret_id` + `org` fields for each candidate row at `DEBUG` level,
+and a final `INFO` summary line with `total`, `skipped`, and `errors`
+counts. Exit code 0 on success, 1 on per-row errors, 2 on fatal
+startup error. **No** writes to Vault. **No** writes to Postgres.
+Failures here are read-side problems (KEK mismatch, RLS
+misconfiguration) and abort the cutover.
 
 ### Step 2 — apply
 
 ```bash
 kubinate-vault-migrate \
   --apply \
-  --pg-url "$KUBINATE__DATABASE_URL" \
+  --database-url "$KUBINATE__DATABASE_URL" \
   --vault-addr "$KUBINATE__VAULT_ADDR" \
   --vault-token "$KUBINATE__VAULT_TOKEN" \
-  --concurrency 8 \
-  | tee migrate-apply-$(date -u +%Y%m%dT%H%M%SZ).log
+  --kek "$KUBINATE__KEK" \
+  --batch-size 100 \
+  2>&1 | tee migrate-apply-$(date -u +%Y%m%dT%H%M%SZ).log
 ```
 
 Idempotency contract: re-running `--apply` after a partial run
@@ -181,11 +185,12 @@ Caveats:
 
 - Any secret **created** during the dual-write window (Step 2 →
   Step 3) lands in Vault only — the migration binary is
-  forward-only. If you roll back, you also need to copy those
-  back to pgcrypto. Sprint 5's binary will support a
-  `--reverse` mode for exactly this case; until then a rollback
-  loses any post-cutover writes. Keep the cutover window short
-  enough that this matters less than the alternative.
+  forward-only and has no `--reverse` mode. If you roll back,
+  new-since-cutover secrets are only in Vault. Keep the cutover
+  window short enough that this number is small, then manually
+  copy any post-cutover Vault entries back to pgcrypto if the
+  rollback fires. This is the only path today; a `--reverse` flag
+  is a Sprint 6+ backlog item.
 - The KEK has to still be loadable. `KUBINATE__KEK` is preserved
   in the deployment config until the post-cutover-week sprint
   ticks the "drop pgcrypto" row. Don't remove it earlier.
