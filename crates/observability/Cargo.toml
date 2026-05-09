@@ -9,6 +9,10 @@ description = "Observability proxy bounded context: metric queries, log streams.
 [lib]
 path = "src/lib.rs"
 
+[dev-dependencies]
+wiremock.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+
 [dependencies]
 kubinate-platform = { path = "../platform" }
 tokio.workspace = true

@@ -29,6 +29,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
 
+
 /// Errors surfaced by [`MetricsStore`].
 #[derive(Debug, Error)]
 pub enum MetricsError {
@@ -202,6 +203,257 @@ fn sample_matches(sample: &Sample, query: &RangeQuery) -> bool {
     true
 }
 
+// ── VictoriaMetrics store ────────────────────────────────────────────────────
+
+/// Serde shapes for the Prometheus-compatible `query_range` JSON response.
+mod prom_resp {
+    use serde::Deserialize;
+
+    #[derive(Deserialize)]
+    pub struct Envelope {
+        pub status: String,
+        pub data: Option<Data>,
+        #[serde(rename = "errorType")]
+        pub error_type: Option<String>,
+        pub error: Option<String>,
+    }
+
+    #[derive(Deserialize)]
+    pub struct Data {
+        pub result: Vec<Series>,
+    }
+
+    #[derive(Deserialize)]
+    pub struct Series {
+        pub metric: std::collections::HashMap<String, String>,
+        pub values: Vec<(f64, String)>,
+    }
+}
+
+/// Escapes a label value for the Prometheus text exposition format.
+fn prom_escape(s: &str) -> String {
+    s.replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n")
+}
+
+/// Live [`MetricsStore`] backed by a `VictoriaMetrics` single-node instance.
+///
+/// # Tenant isolation
+///
+/// `VictoriaMetrics` single-node has no built-in per-tenant auth.
+/// Isolation is enforced by this store:
+///
+/// - **Ingest**: every sample gets an `organization_id` label injected
+///   server-side. The caller-supplied labels are used as-is; a client that
+///   tries to forge a different `organization_id` is overridden — the store
+///   always re-stamps from the authenticated actor value passed by
+///   [`handle_write`].
+/// - **Query**: every `PromQL` query includes a mandatory
+///   `organization_id="<uuid>"` label matcher. There is no API path that
+///   issues a query without the matcher.
+///
+/// # Wire format
+///
+/// Ingest uses VM's `/api/v1/import/prometheus` endpoint (`Prometheus`
+/// text exposition format — no protobuf or snappy dependency). Queries
+/// use VM's `/api/v1/query_range` endpoint (standard `Prometheus` JSON
+/// response).
+pub struct VictoriaMetricsStore {
+    client: reqwest::Client,
+    /// Base URL without a trailing slash, e.g. `http://victoria:8428`.
+    base_url: String,
+}
+
+impl VictoriaMetricsStore {
+    /// Construct a new store.  `base_url` must be a valid HTTP/HTTPS
+    /// URL; a trailing slash is stripped.
+    ///
+    /// # Errors
+    /// Returns an error if `base_url` is not a valid URL.
+    /// # Panics
+    /// Panics if the underlying `reqwest` client cannot be built (should
+    /// never happen with the default configuration).
+    pub fn new(base_url: impl Into<String>) -> anyhow::Result<Self> {
+        let raw = base_url.into();
+        // Validate eagerly so misconfiguration is caught at startup.
+        reqwest::Url::parse(&raw).map_err(|e| anyhow::anyhow!("victoria metrics URL: {e}"))?;
+        Ok(Self {
+            client: reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(15))
+                .build()
+                .expect("reqwest client build is infallible"),
+            base_url: raw.trim_end_matches('/').to_owned(),
+        })
+    }
+
+    /// Render samples as Prometheus text exposition lines, injecting
+    /// `organization_id` as a label on every series.
+    fn to_prom_text(organization_id: Uuid, samples: &[Sample]) -> String {
+        use std::fmt::Write as _;
+        let mut out = String::new();
+        for s in samples {
+            let name = s
+                .labels
+                .iter()
+                .find(|l| l.name == "__name__")
+                .map_or("unknown", |l| l.value.as_str());
+
+            // Build label set: all labels except __name__ + injected org.
+            let mut parts: Vec<String> = s
+                .labels
+                .iter()
+                .filter(|l| l.name != "__name__" && l.name != "organization_id")
+                .map(|l| format!("{}=\"{}\"", l.name, prom_escape(&l.value)))
+                .collect();
+            parts.push(format!("organization_id=\"{organization_id}\""));
+
+            let _ = writeln!(out, "{name}{{{}}}\t{} {}", parts.join(","), s.value, s.timestamp_ms);
+        }
+        out
+    }
+
+    /// Build a `PromQL` instant-vector selector that matches the given
+    /// `organization_id` plus any extra label equalities from `query`.
+    fn promql_selector(organization_id: Uuid, query: &RangeQuery) -> String {
+        let mut matchers = vec![
+            format!("__name__=\"{}\"", prom_escape(&query.metric)),
+            format!("organization_id=\"{}\"", organization_id),
+        ];
+        for l in &query.label_eq {
+            matchers.push(format!("{}=\"{}\"", l.name, prom_escape(&l.value)));
+        }
+        format!("{{{}}}", matchers.join(","))
+    }
+}
+
+#[async_trait]
+impl MetricsStore for VictoriaMetricsStore {
+    async fn ingest(
+        &self,
+        organization_id: Uuid,
+        samples: Vec<Sample>,
+    ) -> Result<usize, MetricsError> {
+        let n = samples.len();
+        if n == 0 {
+            return Ok(0);
+        }
+        let body = Self::to_prom_text(organization_id, &samples);
+        let url = format!("{}/api/v1/import/prometheus", self.base_url);
+        let resp = self
+            .client
+            .post(&url)
+            .header("Content-Type", "text/plain")
+            .body(body)
+            .send()
+            .await
+            .map_err(|e| MetricsError::Backend(e.into()))?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(MetricsError::Backend(anyhow::anyhow!(
+                "victoria metrics ingest: {status} — {body}"
+            )));
+        }
+        tracing::debug!(org = %organization_id, n, "metrics ingested to victoria metrics");
+        Ok(n)
+    }
+
+    async fn query_range(
+        &self,
+        organization_id: Uuid,
+        query: &RangeQuery,
+    ) -> Result<Vec<Sample>, MetricsError> {
+        let selector = Self::promql_selector(organization_id, query);
+        // Derive a sensible step: aim for ~360 data points over the window,
+        // with a floor of 15 s so very short windows don't spam the TSDB.
+        let window_secs = (query.end_ms - query.start_ms).max(0) / 1000;
+        let step_secs = (window_secs / 360).max(15);
+        let step = format!("{step_secs}s");
+
+        let url = format!("{}/api/v1/query_range", self.base_url);
+        let resp = self
+            .client
+            .get(&url)
+            .query(&[
+                ("query", selector.as_str()),
+                (
+                    "start",
+                    &format!("{}.{:03}", query.start_ms / 1000, query.start_ms.abs() % 1000),
+                ),
+                (
+                    "end",
+                    &format!("{}.{:03}", query.end_ms / 1000, query.end_ms.abs() % 1000),
+                ),
+                ("step", step.as_str()),
+            ])
+            .send()
+            .await
+            .map_err(|e| MetricsError::Backend(e.into()))?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(MetricsError::Backend(anyhow::anyhow!(
+                "victoria metrics query: {status} — {body}"
+            )));
+        }
+
+        let envelope: prom_resp::Envelope = resp
+            .json()
+            .await
+            .map_err(|e| MetricsError::Backend(e.into()))?;
+
+        if envelope.status != "success" {
+            return Err(MetricsError::Backend(anyhow::anyhow!(
+                "victoria metrics query error: {} — {}",
+                envelope.error_type.as_deref().unwrap_or("unknown"),
+                envelope.error.as_deref().unwrap_or(""),
+            )));
+        }
+
+        let data = envelope.data.unwrap_or_else(|| prom_resp::Data {
+            result: Vec::new(),
+        });
+
+        let mut samples = Vec::new();
+        for series in data.result {
+            // Reconstruct label set: exclude the injected organization_id
+            // (callers know the tenant; echoing it in every label is noise).
+            let labels: Vec<Label> = series
+                .metric
+                .iter()
+                .filter(|(k, _)| *k != "organization_id")
+                .map(|(k, v)| Label {
+                    name: k.clone(),
+                    value: v.clone(),
+                })
+                .collect();
+
+            for (ts_f, val_str) in series.values {
+                // VM timestamps are Unix seconds as f64 (e.g. 1620000000.0).
+                // Multiply by 1000 and round before truncating; the sub-second
+                // precision is at most millisecond so no significant loss occurs
+                // for timestamps in the reasonable range (year 1970–2262).
+                #[allow(clippy::cast_possible_truncation)]
+                let timestamp_ms = (ts_f * 1000.0).round() as i64;
+                let value: f64 = val_str
+                    .parse()
+                    .map_err(|e| MetricsError::Backend(anyhow::anyhow!("parse sample value: {e}")))?;
+                samples.push(Sample {
+                    labels: labels.clone(),
+                    timestamp_ms,
+                    value,
+                });
+            }
+        }
+        Ok(samples)
+    }
+}
+
+// ── Public dispatch helpers ───────────────────────────────────────────────────
+
 /// Validate + dispatch a [`WriteRequest`]. The tenant guard is the
 /// proxy's headline isolation control: even if the body claims a
 /// tenant the actor has read access to (e.g. via a leaked Bearer
@@ -319,7 +571,7 @@ mod tests {
                 assert_eq!(a, actor);
                 assert_eq!(b, claimed);
             }
-            other => panic!("unexpected error: {other:?}"),
+            MetricsError::Backend(e) => panic!("unexpected backend error: {e}"),
         }
     }
 
