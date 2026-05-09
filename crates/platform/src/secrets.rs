@@ -24,6 +24,8 @@ use sqlx::PgPool;
 use thiserror::Error;
 use uuid::Uuid;
 
+use crate::metrics::names::SECRET_STORE_DISPATCH_TOTAL;
+
 /// A handle to a secret whose ciphertext lives in the database.
 ///
 /// The handle is cheap to `Clone` / `Copy` and safe to log — it carries
@@ -139,6 +141,8 @@ impl SecretStore for PgcryptoStore {
         organization_id: Uuid,
         plaintext: SecretString,
     ) -> Result<SecretRef, SecretError> {
+        metrics::counter!(SECRET_STORE_DISPATCH_TOTAL, "backend" => "pgcrypto", "op" => "put")
+            .increment(1);
         let id = Uuid::now_v7();
 
         let mut tx = self.pool.begin().await?;
@@ -180,6 +184,8 @@ impl SecretStore for PgcryptoStore {
     }
 
     async fn get(&self, handle: &SecretRef) -> Result<SecretString, SecretError> {
+        metrics::counter!(SECRET_STORE_DISPATCH_TOTAL, "backend" => "pgcrypto", "op" => "get")
+            .increment(1);
         let mut tx = self.pool.begin().await?;
         sqlx::query(&set_local_tenant(handle.organization_id))
             .execute(&mut *tx)
@@ -210,6 +216,8 @@ impl SecretStore for PgcryptoStore {
     }
 
     async fn delete(&self, handle: &SecretRef) -> Result<(), SecretError> {
+        metrics::counter!(SECRET_STORE_DISPATCH_TOTAL, "backend" => "pgcrypto", "op" => "delete")
+            .increment(1);
         let mut tx = self.pool.begin().await?;
         sqlx::query(&set_local_tenant(handle.organization_id))
             .execute(&mut *tx)
@@ -447,6 +455,8 @@ impl<T: VaultTransit> SecretStore for VaultStore<T> {
         organization_id: Uuid,
         plaintext: SecretString,
     ) -> Result<SecretRef, SecretError> {
+        metrics::counter!(SECRET_STORE_DISPATCH_TOTAL, "backend" => "vault", "op" => "put")
+            .increment(1);
         let key_name = vault_key_name(&self.key_prefix, organization_id);
 
         // Lazy key creation — idempotent on the Vault side. We
@@ -496,6 +506,8 @@ impl<T: VaultTransit> SecretStore for VaultStore<T> {
     }
 
     async fn get(&self, handle: &SecretRef) -> Result<SecretString, SecretError> {
+        metrics::counter!(SECRET_STORE_DISPATCH_TOTAL, "backend" => "vault", "op" => "get")
+            .increment(1);
         let mut tx = self.pool.begin().await?;
         sqlx::query(&set_local_tenant(handle.organization_id))
             .execute(&mut *tx)
@@ -527,6 +539,8 @@ impl<T: VaultTransit> SecretStore for VaultStore<T> {
     }
 
     async fn delete(&self, handle: &SecretRef) -> Result<(), SecretError> {
+        metrics::counter!(SECRET_STORE_DISPATCH_TOTAL, "backend" => "vault", "op" => "delete")
+            .increment(1);
         let mut tx = self.pool.begin().await?;
         sqlx::query(&set_local_tenant(handle.organization_id))
             .execute(&mut *tx)

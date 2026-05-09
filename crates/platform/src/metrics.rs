@@ -77,6 +77,12 @@ pub mod names {
     /// follow-up ADR (0011) names a > 10 sustained value as the
     /// trigger to revisit the Temporal SDK adoption decision.
     pub const RUNNER_WORKFLOWS_INFLIGHT: &str = "kubinate_runner_workflows_inflight";
+
+    /// Total `SecretStore` operations dispatched, labelled by `backend`
+    /// (`pgcrypto` or `vault`) and `op` (`put`, `get`, `delete`). The
+    /// `backend=pgcrypto` series draining to 0 during the Sprint 5
+    /// cutover is the forward-verification signal the runbook asks for.
+    pub const SECRET_STORE_DISPATCH_TOTAL: &str = "kubinate_secret_store_dispatch_total";
 }
 
 #[cfg(test)]

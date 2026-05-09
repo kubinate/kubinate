@@ -63,13 +63,26 @@ FROM clusters
 WHERE id = :cluster_id;
 ```
 
-Check recent agent logs via the control plane's view (we keep the last
-1 hour of agent logs even when the agent is offline, because they are
-pushed independently):
+Check the `agent_audit` chain for the last disconnect event and any
+anomalies in the per-cluster chain (uses the superuser / bypass role):
 
+```sql
+-- Last 20 agent events for the cluster:
+SELECT id, action, resource_id, metadata, created_at
+FROM agent_audit
+WHERE cluster_id = :'cluster_id'
+ORDER BY created_at DESC
+LIMIT 20;
+
+-- Verify chain integrity — returns rows only if the chain is broken:
+SELECT * FROM agent_audit_verify(:'cluster_id');
 ```
-# Grafana / Loki:
-{cluster_id="<id>"} |= "kubinate-agent" | json
+
+The `event = "agent.tunnel.disconnected"` log event from `crates/api/src/agent.rs`
+carries `cluster_id` and `agent_version` fields. Filter for it in Loki:
+
+```logql
+{service="kubinate-api"} | json | event="agent.tunnel.disconnected" | cluster_id=`<id>`
 ```
 
 Most frequent causes:
