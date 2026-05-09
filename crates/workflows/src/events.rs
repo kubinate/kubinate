@@ -143,7 +143,9 @@ mod tests {
         let event = rx.recv().await.expect("event");
         match event {
             ClusterEvent::Step { step } => assert_eq!(step, "installing_k3s_server"),
-            other => panic!("unexpected event variant: {other:?}"),
+            ClusterEvent::Terminal { status, .. } => {
+                panic!("unexpected Terminal event: {status}")
+            }
         }
     }
 
