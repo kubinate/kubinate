@@ -246,16 +246,17 @@ where
 /// extractor; read-only routes use the plain [`Actor`].
 ///
 /// Enforced on:
-/// - `POST   /v1/clusters`                         (`clusters::create`)
-/// - `DELETE /v1/clusters/:id`                     (`clusters::destroy`)
-/// - `POST   /v1/clusters/:id/workers`             (`clusters::scale_workers`)
-/// - `POST   /v1/billing/checkout`                 (`billing::start_checkout`)
-/// - `POST   /v1/integrations/hetzner/credentials` (`integrations::create`)
-/// - `DELETE /v1/integrations/hetzner/credentials/:id` (`integrations::remove`)
-/// - `POST   /v1/organizations/:id/invites`        (`team::create_invite`)
-/// - `DELETE /v1/organizations/:id/invites/:id`    (`team::revoke_invite`)
-/// - `PATCH  /v1/organizations/:id/members/:id`    (`team::update_role`)
-/// - `DELETE /v1/organizations/:id/members/:id`    (`team::remove_member`)
+/// - `POST   /v1/clusters`                              (`clusters::create`)
+/// - `DELETE /v1/clusters/:id`                          (`clusters::destroy`)
+/// - `POST   /v1/clusters/:id/workers`                  (`clusters::scale_workers`)
+/// - `POST   /v1/clusters/:id/addons`                   (`clusters::install_addon`)
+/// - `POST   /v1/billing/checkout`                      (`billing::start_checkout`)
+/// - `POST   /v1/integrations/hetzner/credentials`      (`integrations::create`)
+/// - `DELETE /v1/integrations/hetzner/credentials/:id`  (`integrations::remove`)
+/// - `POST   /v1/organizations/:id/invites`             (`team::create_invite`)
+/// - `DELETE /v1/organizations/:id/invites/:id`         (`team::revoke_invite`)
+/// - `PATCH  /v1/organizations/:id/members/:id`         (`team::update_role`)
+/// - `DELETE /v1/organizations/:id/members/:id`         (`team::remove_member`)
 ///
 /// Why a single extractor rather than `Owner` + `Admin` variants:
 /// the headline gate is MFA, not role granularity. Routes that need

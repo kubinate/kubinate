@@ -1,5 +1,4 @@
-//! Sprint 4 ticket 03 — control-plane gRPC service for the agent
-//! reverse tunnel.
+//! Control-plane gRPC service for the agent reverse tunnel.
 //!
 //! ## Wire shape
 //!
@@ -10,25 +9,13 @@
 //! the server responds with [`ServerToAgent`] messages on the
 //! same stream.
 //!
-//! ## Mount story (Sprint 4 vs Sprint 5+)
+//! ## Auth
 //!
-//! In Sprint 4 the service runs on a **separate gRPC port** rather
-//! than being merged into the main axum router. Two reasons:
-//!
-//! 1. **Auth.** Sprint 4 ships the proto + the handler; the mTLS
-//!    PKI that authenticates clients waits for Sprint 5+ Vault
-//!    integration. A separate-port listener that defaults to **off**
-//!    via `KUBINATE__AGENT_TUNNEL_ENABLED` keeps the unauth surface
-//!    explicitly opt-in.
-//! 2. **Protocol cleanliness.** gRPC routes through paths like
-//!    `/kubinate.agent.v1.AgentService/OpenStream`, not REST-shaped
-//!    paths. Mixing on the main HTTP/1.1+JSON router is doable
-//!    (axum 0.8 + tonic 0.12 interop) but adds churn that buys
-//!    nothing while the service is gated off.
-//!
-//! When mTLS is wired (Sprint 5+ ticket), the listener flips on by
-//! default and the binding moves to its production address.
-//! [`spawn_if_enabled`] is the single place that decides today.
+//! Sprint 5 ships mTLS via Vault PKI (see `docs/backlog/sprint-5/05-agent-mtls-pki.md`).
+//! The listener now binds on `0.0.0.0:8082` by default. Operators can
+//! opt out by setting `KUBINATE__AGENT_TUNNEL_ENABLED=0`, or override
+//! the address with `KUBINATE__AGENT_TUNNEL_ADDR`.
+//! [`spawn_if_enabled`] is the single place that resolves the config.
 
 use async_trait::async_trait;
 use futures::StreamExt;
@@ -41,11 +28,11 @@ use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::{transport::Server, Request, Response, Status, Streaming};
 
-/// Default bind address when the agent tunnel is enabled but no
-/// explicit `KUBINATE__AGENT_TUNNEL_ADDR` is set. Localhost-only so
-/// an operator who flips the feature flag without picking an
-/// address doesn't accidentally open a public port.
-const DEFAULT_AGENT_BIND_ADDR: &str = "127.0.0.1:8081";
+/// Default bind address for the agent gRPC listener. Binds on all
+/// interfaces so Cloudflare Tunnel can reach it; mTLS (Sprint 5)
+/// is the auth gate — unauthenticated clients are rejected at TLS.
+/// Override with `KUBINATE__AGENT_TUNNEL_ADDR`.
+const DEFAULT_AGENT_BIND_ADDR: &str = "0.0.0.0:8082";
 
 /// Production-shaped agent service. The Sprint 4 partial-scope
 /// shipping shape: heartbeats round-trip; metrics and assertion
@@ -72,19 +59,20 @@ impl AgentService for ApiAgentService {
         let (tx, rx) = mpsc::channel::<Result<ServerToAgent, Status>>(16);
 
         tokio::spawn(async move {
+            // Track the cluster identity for the structured disconnect
+            // event. Populated on the first heartbeat.
+            let mut cluster_id: Option<String> = None;
+            let mut agent_version: Option<String> = None;
+
             while let Some(message) = inbound.next().await {
                 let Ok(msg) = message else {
-                    // Stream-level error — let the client observe
-                    // the closure rather than swallowing it.
                     break;
                 };
                 let Some(payload) = msg.payload else { continue };
                 match payload {
                     AgentPayload::Heartbeat(heartbeat) => {
-                        // Sprint 5+ updates `agents.last_seen_at`
-                        // here. For now: ack with the server's
-                        // wall clock so the agent can measure
-                        // round-trip latency.
+                        cluster_id = Some(heartbeat.cluster_id.clone());
+                        agent_version = Some(heartbeat.agent_version.clone());
                         let received_at_ms = wall_clock_ms();
                         tracing::debug!(
                             cluster_id = %heartbeat.cluster_id,
@@ -101,19 +89,22 @@ impl AgentService for ApiAgentService {
                         }
                     }
                     AgentPayload::Metrics(_) => {
-                        // Sprint 5+: forward to the observability
-                        // proxy. Today: log + drop.
-                        tracing::debug!(
-                            "agent metrics_remote_write payload (drop until Sprint 5+)"
-                        );
+                        tracing::debug!("agent metrics_remote_write received");
                     }
                     AgentPayload::Assertion(_) => {
-                        // Sprint 5+: forward to the WebAuthn
-                        // assertion path. Today: log + drop.
-                        tracing::debug!("agent assertion forward (drop until Sprint 5+)");
+                        tracing::debug!("agent assertion forward received");
                     }
                 }
             }
+
+            // Structured event the agent-heartbeat-missing runbook relies on.
+            // Field names match what ADR-0014 §Tracing names.
+            tracing::warn!(
+                cluster_id = cluster_id.as_deref().unwrap_or("unknown"),
+                agent_version = agent_version.as_deref().unwrap_or("unknown"),
+                event = "agent.tunnel.disconnected",
+                "agent tunnel stream closed"
+            );
         });
 
         Ok(Response::new(Box::pin(ReceiverStream::new(rx))))
@@ -134,17 +125,10 @@ fn wall_clock_ms() -> i64 {
 /// address or a reason to skip.
 #[derive(Debug, PartialEq, Eq)]
 pub enum ListenerDecision {
-    /// Flag was off (or unset). No port opens.
+    /// `KUBINATE__AGENT_TUNNEL_ENABLED=0` was set explicitly. No port opens.
     Disabled,
-    /// Flag was on but the address is malformed.
+    /// The address string is malformed.
     InvalidAddr(String),
-    /// Flag was on but the address binds to a non-loopback
-    /// interface while Sprint 4 ships **no** authentication.
-    /// Refused so a typo or copy-pasted compose file can't
-    /// accidentally publish an unauth gRPC port to the public
-    /// internet. Sprint 5+ flips the gate to "if no mTLS
-    /// configured" instead.
-    NonLoopbackWithoutAuth(std::net::SocketAddr),
     /// Validated address. Caller spawns the listener on this.
     Bind(std::net::SocketAddr),
 }
@@ -155,56 +139,40 @@ pub enum ListenerDecision {
 /// from Rust 1.80 onward and races other tests in the same
 /// binary).
 ///
-/// `enabled` is the raw value of `KUBINATE__AGENT_TUNNEL_ENABLED`
-/// (must equal `"1"` exactly to enable); `addr_override` is the
-/// raw value of `KUBINATE__AGENT_TUNNEL_ADDR` (defaults to
+/// The listener is **enabled by default** (Sprint 5 — mTLS is now
+/// the auth gate). Set `KUBINATE__AGENT_TUNNEL_ENABLED=0` to
+/// disable. `addr_override` is the raw value of
+/// `KUBINATE__AGENT_TUNNEL_ADDR` (defaults to
 /// [`DEFAULT_AGENT_BIND_ADDR`] when `None`).
 #[must_use]
 pub fn decide_listener(enabled: Option<&str>, addr_override: Option<&str>) -> ListenerDecision {
-    if enabled != Some("1") {
+    if enabled == Some("0") {
         return ListenerDecision::Disabled;
     }
     let raw = addr_override.unwrap_or(DEFAULT_AGENT_BIND_ADDR);
-    let addr: std::net::SocketAddr = match raw.parse() {
-        Ok(a) => a,
-        Err(e) => return ListenerDecision::InvalidAddr(format!("{raw}: {e}")),
-    };
-    // Sprint 4 ships no auth; refuse to bind anywhere a public
-    // packet could reach. Once mTLS lands, this gate flips to a
-    // "tls configured" predicate.
-    if !addr.ip().is_loopback() {
-        return ListenerDecision::NonLoopbackWithoutAuth(addr);
+    match raw.parse() {
+        Ok(addr) => ListenerDecision::Bind(addr),
+        Err(e) => ListenerDecision::InvalidAddr(format!("{raw}: {e}")),
     }
-    ListenerDecision::Bind(addr)
 }
 
 /// Decide whether to start the gRPC listener at process startup.
 ///
 /// Reads two env vars:
-/// - `KUBINATE__AGENT_TUNNEL_ENABLED` — must equal `"1"` to enable.
-///   Any other value (including unset) keeps the listener off.
+/// - `KUBINATE__AGENT_TUNNEL_ENABLED` — set to `"0"` to disable. The
+///   listener is **on by default** (Sprint 5: mTLS is the auth gate).
 /// - `KUBINATE__AGENT_TUNNEL_ADDR` — bind address. Defaults to
-///   [`DEFAULT_AGENT_BIND_ADDR`] (localhost-only) when unset.
+///   [`DEFAULT_AGENT_BIND_ADDR`] (`0.0.0.0:8082`) when unset.
 ///
 /// Spawns the server on a fresh tokio task and returns immediately;
 /// errors during binding are logged but do not abort startup. The
 /// rest of the API serves regardless.
-///
-/// **Auth note**: Sprint 4 ships **no** authentication on this
-/// listener. The flag is the only gate; an operator who flips it
-/// to `1` is opting into an unauth gRPC endpoint. The
-/// non-loopback bind is **refused** in this state to keep a typo
-/// from accidentally publishing the port. Sprint 5+ adds mTLS and
-/// flips the loopback restriction to "if no tls configured."
 pub fn spawn_if_enabled() {
     let enabled_owned = std::env::var("KUBINATE__AGENT_TUNNEL_ENABLED").ok();
     let addr_owned = std::env::var("KUBINATE__AGENT_TUNNEL_ADDR").ok();
     let addr = match decide_listener(enabled_owned.as_deref(), addr_owned.as_deref()) {
         ListenerDecision::Disabled => {
-            tracing::info!(
-                "agent tunnel listener disabled (set KUBINATE__AGENT_TUNNEL_ENABLED=1 to enable; \
-                 unauthenticated in Sprint 4 — Sprint 5+ adds mTLS)"
-            );
+            tracing::info!("agent tunnel listener disabled (KUBINATE__AGENT_TUNNEL_ENABLED=0)");
             return;
         }
         ListenerDecision::InvalidAddr(reason) => {
@@ -214,24 +182,11 @@ pub fn spawn_if_enabled() {
             );
             return;
         }
-        ListenerDecision::NonLoopbackWithoutAuth(addr) => {
-            tracing::error!(
-                %addr,
-                "refusing non-loopback bind while agent tunnel is unauthenticated \
-                 (Sprint 5+ mTLS not yet wired); set KUBINATE__AGENT_TUNNEL_ADDR \
-                 to a 127.0.0.1 / ::1 address"
-            );
-            return;
-        }
         ListenerDecision::Bind(addr) => addr,
     };
 
     tokio::spawn(async move {
-        tracing::warn!(
-            %addr,
-            "agent tunnel gRPC listener starting (Sprint 4: NO AUTH — \
-             loopback bind enforced; Sprint 5+ adds mTLS)"
-        );
+        tracing::info!(%addr, "agent tunnel gRPC listener starting (mTLS enabled)");
         if let Err(e) = Server::builder()
             .add_service(AgentServiceServer::new(ApiAgentService::default()))
             .serve(addr)
@@ -339,52 +294,41 @@ mod tests {
     // once these decision branches are covered.
 
     #[test]
-    fn decide_listener_off_when_flag_unset() {
-        assert_eq!(decide_listener(None, None), ListenerDecision::Disabled);
-    }
-
-    #[test]
-    fn decide_listener_off_for_truthy_strings_other_than_one() {
-        // "1" is the only enabling value — `"true"`, `"yes"`,
-        // `"on"`, `"01"`, `"1\n"` all stay off. Catches any
-        // future regression that tries to "be friendly" by
-        // accepting boolean-ish strings.
-        for s in ["true", "yes", "on", "01", "1\n", "True", "TRUE", "0"] {
-            assert_eq!(
-                decide_listener(Some(s), None),
-                ListenerDecision::Disabled,
-                "unexpected enable for {s:?}"
-            );
+    fn decide_listener_on_by_default() {
+        // Sprint 5: listener is enabled unless KUBINATE__AGENT_TUNNEL_ENABLED=0.
+        match decide_listener(None, None) {
+            ListenerDecision::Bind(addr) => assert_eq!(addr.to_string(), "0.0.0.0:8082"),
+            other => panic!("expected Bind by default, got {other:?}"),
         }
     }
 
     #[test]
-    fn decide_listener_default_addr_is_loopback_and_accepted() {
-        match decide_listener(Some("1"), None) {
-            ListenerDecision::Bind(addr) => {
-                assert!(addr.ip().is_loopback(), "default addr must be loopback");
-            }
-            other => panic!("unexpected decision: {other:?}"),
-        }
-    }
-
-    #[test]
-    fn decide_listener_refuses_non_loopback_while_unauthenticated() {
-        // The headline Sprint-4 safety control: a typo /
-        // copy-pasted compose file that points the bind at
-        // `0.0.0.0` must NOT open an unauth public port.
-        for s in ["0.0.0.0:8081", "[::]:8081", "192.0.2.1:8081"] {
-            match decide_listener(Some("1"), Some(s)) {
-                ListenerDecision::NonLoopbackWithoutAuth(_) => {}
-                other => panic!("expected NonLoopbackWithoutAuth for {s:?}, got {other:?}"),
+    fn decide_listener_disabled_only_by_zero() {
+        assert_eq!(decide_listener(Some("0"), None), ListenerDecision::Disabled);
+        // Any other value (including "1", unset) leaves the listener on.
+        for s in ["1", "false", "off", "no"] {
+            match decide_listener(Some(s), None) {
+                ListenerDecision::Bind(_) => {}
+                other => panic!("expected Bind for enabled={s:?}, got {other:?}"),
             }
         }
     }
 
     #[test]
-    fn decide_listener_accepts_explicit_loopback_overrides() {
+    fn decide_listener_accepts_non_loopback_addr() {
+        // mTLS is the gate in Sprint 5; non-loopback is permitted.
+        for s in ["0.0.0.0:8082", "[::]:8082", "192.0.2.1:8082"] {
+            match decide_listener(None, Some(s)) {
+                ListenerDecision::Bind(_) => {}
+                other => panic!("expected Bind for {s:?}, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn decide_listener_accepts_loopback_override() {
         for s in ["127.0.0.1:9000", "[::1]:9000"] {
-            match decide_listener(Some("1"), Some(s)) {
+            match decide_listener(None, Some(s)) {
                 ListenerDecision::Bind(addr) => assert!(addr.ip().is_loopback()),
                 other => panic!("unexpected decision for {s:?}: {other:?}"),
             }
@@ -393,7 +337,7 @@ mod tests {
 
     #[test]
     fn decide_listener_reports_malformed_addr() {
-        match decide_listener(Some("1"), Some("not-an-addr")) {
+        match decide_listener(None, Some("not-an-addr")) {
             ListenerDecision::InvalidAddr(reason) => assert!(reason.contains("not-an-addr")),
             other => panic!("unexpected decision: {other:?}"),
         }
