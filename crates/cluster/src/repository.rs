@@ -71,6 +71,19 @@ pub trait ClusterRepository: Send + Sync {
         audit: &AuditContext,
     ) -> Result<(), PlatformError>;
 
+    /// Stamp `agent_last_seen_at = now()` and `agent_version` for a
+    /// cluster. Bypasses RLS via the `touch_cluster_agent_heartbeat`
+    /// SECURITY DEFINER function because the agent gRPC service knows
+    /// only the `cluster_id` — it has not resolved the `organization_id`
+    /// yet. Returns the cluster's `organization_id` so the caller can
+    /// cache it for subsequent org-id cross-checks on Metrics payloads.
+    /// Returns `Ok(None)` when the cluster id is unknown or soft-deleted.
+    async fn touch_agent_heartbeat(
+        &self,
+        cluster_id: Uuid,
+        agent_version: &str,
+    ) -> Result<Option<Uuid>, PlatformError>;
+
     /// Soft-delete (set `deleted_at`). Idempotent — a double-delete is
     /// not an error, since the destroy workflow may be re-run.
     async fn soft_delete(
@@ -158,7 +171,8 @@ impl ClusterRepository for PgClusterRepository {
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             RETURNING id, organization_id, credential_id, name, region, server_type,
                       control_plane_count, worker_count, status, status_reason,
-                      temporal_workflow_id, created_at, updated_at, version
+                      temporal_workflow_id, created_at, updated_at, version,
+                      agent_last_seen_at, agent_version
             ",
         )
         .bind(id)
@@ -185,7 +199,8 @@ impl ClusterRepository for PgClusterRepository {
             r"
             SELECT id, organization_id, credential_id, name, region, server_type,
                    control_plane_count, worker_count, status, status_reason,
-                   temporal_workflow_id, created_at, updated_at, version
+                   temporal_workflow_id, created_at, updated_at, version,
+                   agent_last_seen_at, agent_version
             FROM clusters
             WHERE id = $1 AND deleted_at IS NULL
             ",
@@ -312,6 +327,19 @@ impl ClusterRepository for PgClusterRepository {
         Ok(())
     }
 
+    async fn touch_agent_heartbeat(
+        &self,
+        cluster_id: Uuid,
+        agent_version: &str,
+    ) -> Result<Option<Uuid>, PlatformError> {
+        let row: Option<(Uuid,)> = sqlx::query_as("SELECT touch_cluster_agent_heartbeat($1, $2)")
+            .bind(cluster_id)
+            .bind(agent_version)
+            .fetch_optional(&self.pool)
+            .await?;
+        Ok(row.map(|(org_id,)| org_id))
+    }
+
     async fn soft_delete(
         &self,
         organization_id: Uuid,
@@ -346,7 +374,8 @@ impl ClusterRepository for PgClusterRepository {
             r"
             SELECT id, organization_id, credential_id, name, region, server_type,
                    control_plane_count, worker_count, status, status_reason,
-                   temporal_workflow_id, created_at, updated_at, version
+                   temporal_workflow_id, created_at, updated_at, version,
+                   agent_last_seen_at, agent_version
             FROM clusters
             WHERE deleted_at IS NULL
             ORDER BY created_at DESC
@@ -486,6 +515,8 @@ fn row_to_cluster(row: sqlx::postgres::PgRow) -> Cluster {
         created_at: row.get("created_at"),
         updated_at: row.get("updated_at"),
         version: row.get("version"),
+        agent_last_seen_at: row.get("agent_last_seen_at"),
+        agent_version: row.get("agent_version"),
     }
 }
 

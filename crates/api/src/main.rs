@@ -379,7 +379,7 @@ async fn main() -> anyhow::Result<()> {
         .nest("/v1/invites", team::invite_accept_route())
         .nest("/v1/billing", billing::routes())
         .nest("/v1/observability", observability::routes())
-        .with_state(state)
+        .with_state(state.clone())
         .layer(SetRequestIdLayer::new(
             request_id_header.clone(),
             MakeRequestUuid,
@@ -396,12 +396,7 @@ async fn main() -> anyhow::Result<()> {
         .await
         .with_context(|| format!("bind {addr}"))?;
 
-    // Sprint 4 ticket 03 — gated agent gRPC listener on a separate
-    // port. Defaults to off; an operator flips
-    // `KUBINATE__AGENT_TUNNEL_ENABLED=1` only after they've stood up
-    // the mTLS PKI Sprint 5+ ships. Failing to start does not abort
-    // the API.
-    agent::spawn_if_enabled();
+    agent::spawn_if_enabled(state.cluster_repo.clone(), state.metrics_store.clone());
 
     tracing::info!(%addr, "listening");
     axum::serve(listener, app)

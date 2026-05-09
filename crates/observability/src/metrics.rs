@@ -128,6 +128,20 @@ pub trait MetricsStore: Send + Sync {
         organization_id: Uuid,
         query: &RangeQuery,
     ) -> Result<Vec<Sample>, MetricsError>;
+
+    /// Forward a raw Prometheus remote-write payload (snappy-encoded
+    /// protobuf `WriteRequest` bytes) to the backing TSDB, injecting
+    /// `organization_id` as an extra label for tenant isolation.
+    ///
+    /// The bytes arrive verbatim from the agent's
+    /// `MetricsRemoteWrite.write_request` field and are handed to
+    /// VM's `/api/v1/write` endpoint unchanged. `InMemoryMetricsStore`
+    /// treats this as a no-op — it cannot decode raw protobuf.
+    async fn forward_write(
+        &self,
+        organization_id: Uuid,
+        write_request: Vec<u8>,
+    ) -> Result<(), MetricsError>;
 }
 
 /// Skeleton in-memory store. Keeps every sample for every tenant
@@ -175,6 +189,15 @@ impl MetricsStore for InMemoryMetricsStore {
             .cloned()
             .collect();
         Ok(matched)
+    }
+
+    async fn forward_write(
+        &self,
+        _organization_id: Uuid,
+        _write_request: Vec<u8>,
+    ) -> Result<(), MetricsError> {
+        // In-memory store cannot decode raw protobuf; silently accept.
+        Ok(())
     }
 }
 
@@ -363,6 +386,40 @@ impl MetricsStore for VictoriaMetricsStore {
         }
         tracing::debug!(org = %organization_id, n, "metrics ingested to victoria metrics");
         Ok(n)
+    }
+
+    async fn forward_write(
+        &self,
+        organization_id: Uuid,
+        write_request: Vec<u8>,
+    ) -> Result<(), MetricsError> {
+        if write_request.is_empty() {
+            return Ok(());
+        }
+        let url = format!(
+            "{}/api/v1/write?extra_label=organization_id={}",
+            self.base_url, organization_id
+        );
+        let resp = self
+            .client
+            .post(&url)
+            .header("Content-Type", "application/x-protobuf")
+            .header("Content-Encoding", "snappy")
+            .header("X-Prometheus-Remote-Write-Version", "0.1.0")
+            .body(write_request)
+            .send()
+            .await
+            .map_err(|e| MetricsError::Backend(e.into()))?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(MetricsError::Backend(anyhow::anyhow!(
+                "victoria metrics write: {status} — {body}"
+            )));
+        }
+        tracing::debug!(org = %organization_id, "agent metrics forwarded to victoria metrics");
+        Ok(())
     }
 
     async fn query_range(

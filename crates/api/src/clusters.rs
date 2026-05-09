@@ -8,7 +8,7 @@
 
 use axum::{
     body::Body,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::{header, HeaderMap, StatusCode},
     response::{
         sse::{Event, KeepAlive, Sse},
@@ -55,6 +55,7 @@ pub fn routes() -> Router<AppState> {
         .route("/{id}/addons", post(install_addon).get(list_addons))
         .route("/{id}/workers", post(scale_workers))
         .route("/{id}/events", get(stream_events))
+        .route("/{id}/metrics", get(query_metrics))
 }
 
 #[derive(Deserialize, Serialize)]
@@ -97,6 +98,10 @@ struct ClusterView {
     kubeconfig_available: bool,
     created_at: OffsetDateTime,
     updated_at: OffsetDateTime,
+    /// Last time the in-cluster agent sent a heartbeat. `None` = never connected.
+    agent_last_seen_at: Option<OffsetDateTime>,
+    /// Agent build version from the last heartbeat.
+    agent_version: String,
 }
 
 impl ClusterView {
@@ -128,6 +133,8 @@ impl ClusterView {
             kubeconfig_available: matches!(c.status, kubinate_cluster::model::ClusterStatus::Ready),
             created_at: c.created_at,
             updated_at: c.updated_at,
+            agent_last_seen_at: c.agent_last_seen_at,
+            agent_version: c.agent_version,
         }
     }
 }
@@ -819,4 +826,62 @@ async fn list_addons(
         .list_for_cluster(actor.organization_id, cluster_id)
         .await?;
     Ok(Json(rows.into_iter().map(AddonView::from).collect()))
+}
+
+#[derive(Deserialize)]
+struct MetricsQueryParams {
+    metric: String,
+    /// Inclusive range start as Unix seconds (integer or float).
+    start: f64,
+    /// Inclusive range end as Unix seconds (integer or float).
+    end: f64,
+}
+
+#[derive(Serialize)]
+struct MetricsQueryResponse {
+    samples: Vec<kubinate_observability::metrics::Sample>,
+}
+
+/// `GET /v1/clusters/:id/metrics` — tenant-scoped range query for a
+/// cluster. Verifies cluster ownership, then delegates to the
+/// configured `MetricsStore`. The `organization_id` comes from the
+/// actor's authenticated session — never from the URL or query string.
+///
+/// Query params: `metric` (required), `start` (Unix s, required),
+/// `end` (Unix s, required).
+async fn query_metrics(
+    State(state): State<AppState>,
+    actor: Actor,
+    Path(cluster_id): Path<Uuid>,
+    Query(params): Query<MetricsQueryParams>,
+) -> Result<Json<MetricsQueryResponse>, ApiError> {
+    // Verify the cluster belongs to this actor's org (ownership check).
+    state
+        .cluster_repo
+        .get(actor.organization_id, cluster_id)
+        .await?;
+
+    #[allow(clippy::cast_possible_truncation)]
+    let start_ms = (params.start * 1000.0).round() as i64;
+    #[allow(clippy::cast_possible_truncation)]
+    let end_ms = (params.end * 1000.0).round() as i64;
+
+    let query = kubinate_observability::metrics::RangeQuery {
+        metric: params.metric,
+        label_eq: vec![],
+        start_ms,
+        end_ms,
+    };
+
+    let samples = state
+        .metrics_store
+        .query_range(actor.organization_id, &query)
+        .await
+        .map_err(|e| {
+            ApiError::from(kubinate_platform::error::PlatformError::Internal(
+                anyhow::anyhow!("metrics query: {e}"),
+            ))
+        })?;
+
+    Ok(Json(MetricsQueryResponse { samples }))
 }

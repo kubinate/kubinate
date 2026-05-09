@@ -56,6 +56,10 @@ pub struct Cluster {
     pub updated_at: OffsetDateTime,
     /// Optimistic-lock version.
     pub version: i64,
+    /// When the agent last sent a heartbeat. `None` = never connected.
+    pub agent_last_seen_at: Option<OffsetDateTime>,
+    /// Agent build version from the last heartbeat (empty string if never seen).
+    pub agent_version: String,
 }
 
 /// Input used to create a new cluster. The API layer validates the

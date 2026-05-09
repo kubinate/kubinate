@@ -56,14 +56,16 @@ export const clusterViewSchema = z.object({
   server_type: z.string(),
   control_plane_count: z.number(),
   worker_count: z.number(),
-  status: z.enum(['pending', 'provisioning', 'ready', 'failed', 'destroying', 'destroyed']),
+  status: z.enum(['pending', 'provisioning', 'ready', 'scaling', 'failed', 'destroying', 'destroyed']),
   current_step: z.string().nullable().optional(),
   started_at: z.string(),
   error_category: errorCategorySchema.nullable().optional(),
   terminal: z.boolean(),
   kubeconfig_available: z.boolean(),
   created_at: z.string(),
-  updated_at: z.string()
+  updated_at: z.string(),
+  agent_last_seen_at: z.string().nullable().optional(),
+  agent_version: z.string().optional()
 });
 
 export type ClusterView = z.infer<typeof clusterViewSchema>;

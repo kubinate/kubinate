@@ -2,7 +2,14 @@
   import { page } from '$app/state';
   import { goto } from '$app/navigation';
   import { onDestroy, onMount } from 'svelte';
-  import { ApiError, getCluster, loadClusterCatalog } from '$lib/api/clusters';
+  import {
+    ApiError,
+    getCluster,
+    loadClusterCatalog,
+    destroyCluster,
+    getClusterMetrics,
+    type MetricSample
+  } from '$lib/api/clusters';
   import { installAddon, listAddons } from '$lib/api/addons';
   import { errorCategoryMessage, type AddonView, type ClusterView } from '$lib/api/schemas';
   import { Download, Loader2 } from 'lucide-svelte';
@@ -51,6 +58,9 @@
   let sseRetries = 0;
   let sseAbandoned = false;
 
+  let metricSamples = $state<MetricSample[]>([]);
+  let metricsLoading = $state(true);
+
   // Sprint 3 ticket 03 — addon panel state.
   let addons = $state<AddonView[] | null>(null);
   let availableAddons = $state<string[]>([]);
@@ -59,6 +69,11 @@
   let installError = $state<string | null>(null);
   let installAddonSlug = $state<string | null>(null);
   let installVersion = $state('');
+
+  let destroyConfirmName = $state('');
+  let destroyModalOpen = $state(false);
+  let destroyInFlight = $state(false);
+  let destroyError = $state<string | null>(null);
 
   async function refresh() {
     try {
@@ -83,6 +98,25 @@
           : err instanceof Error
             ? err.message
             : 'Unknown error';
+    }
+  }
+
+  async function loadMetrics(clusterId: string) {
+    metricsLoading = true;
+    const endSec = Date.now() / 1000;
+    const startSec = endSec - 30 * 60;
+    try {
+      metricSamples = await getClusterMetrics(
+        clusterId,
+        'kubinate_agent_heartbeat_total',
+        startSec,
+        endSec
+      );
+    } catch {
+      // Best-effort; chart shows "no data" on failure.
+      metricSamples = [];
+    } finally {
+      metricsLoading = false;
     }
   }
 
@@ -259,6 +293,7 @@
   onMount(() => {
     refresh();
     loadAvailableAddons();
+    loadMetrics(page.params.id!);
     openEventSource();
     // Separate ticker so the "elapsed" display updates every second
     // without triggering an extra fetch.
@@ -271,6 +306,26 @@
     stopPolling();
     closeEventSource();
     if (tickHandle) clearInterval(tickHandle);
+  });
+
+  const sparklinePath = $derived.by(() => {
+    if (metricSamples.length < 2) return '';
+    const W = 300;
+    const H = 60;
+    const ts = metricSamples.map((s) => s.timestamp_ms);
+    const vs = metricSamples.map((s) => s.value);
+    const tMin = Math.min(...ts);
+    const tMax = Math.max(...ts);
+    const vMin = Math.min(...vs);
+    const vMax = Math.max(...vs);
+    const tRange = tMax - tMin || 1;
+    const vRange = vMax - vMin || 1;
+    const pts = metricSamples.map((s) => {
+      const x = ((s.timestamp_ms - tMin) / tRange) * W;
+      const y = H - ((s.value - vMin) / vRange) * H;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    });
+    return `M ${pts.join(' L ')}`;
   });
 
   // Sprint 1 thin slice: 5–15 minute provisioning per ADR-0003 §Context.
@@ -309,6 +364,31 @@
     // create form so the user can submit again.
     await goto('/app/clusters/new');
   }
+
+  async function onDestroyCluster() {
+    if (!cluster || destroyConfirmName !== cluster.name) return;
+    destroyInFlight = true;
+    destroyError = null;
+    try {
+      await destroyCluster(cluster.id);
+      await goto('/app/clusters');
+    } catch (err) {
+      destroyError =
+        err instanceof ApiError
+          ? `${err.title}: ${err.detail}`
+          : err instanceof Error
+            ? err.message
+            : 'Unknown error';
+    } finally {
+      destroyInFlight = false;
+    }
+  }
+
+  // Agent is "connected" if the last heartbeat was within 90 seconds.
+  const agentConnected = $derived.by(() => {
+    if (!cluster?.agent_last_seen_at) return false;
+    return Date.now() - new Date(cluster.agent_last_seen_at).getTime() < 90_000;
+  });
 
   function statusBadgeClass(status: string): string {
     if (status === 'ready') {
@@ -377,6 +457,21 @@
             <dt class="font-medium text-muted-foreground">Status</dt>
             <dd class="capitalize">{cluster.status}</dd>
 
+            {#if cluster.agent_last_seen_at}
+              <dt class="font-medium text-muted-foreground">Agent</dt>
+              <dd>
+                {#if agentConnected}
+                  <Badge class="bg-emerald-100 text-emerald-800 border-emerald-200">Connected</Badge
+                  >
+                {:else}
+                  <Badge class="bg-zinc-100 text-zinc-600 border-zinc-200">Disconnected</Badge>
+                {/if}
+                <span class="ml-2 text-xs text-muted-foreground">
+                  {new Date(cluster.agent_last_seen_at).toLocaleString()}
+                </span>
+              </dd>
+            {/if}
+
             {#if cluster.current_step}
               <dt class="font-medium text-muted-foreground">Step</dt>
               <dd class="capitalize">{prettyStep(cluster.current_step)}</dd>
@@ -392,6 +487,30 @@
           </dl>
         </CardContent>
       </Card>
+
+      <!-- Metrics chart -->
+      {#if cluster.status === 'ready'}
+        <Card>
+          <CardHeader>
+            <CardTitle>Agent heartbeats (last 30 min)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {#if metricsLoading}
+              <Skeleton class="h-16 w-full" />
+            {:else if metricSamples.length < 2}
+              <p class="text-sm text-muted-foreground">No data yet.</p>
+            {:else}
+              <svg
+                viewBox="0 0 300 60"
+                class="w-full h-16 text-primary"
+                aria-label="Agent heartbeat sparkline"
+              >
+                <path d={sparklinePath} fill="none" stroke="currentColor" stroke-width="1.5" />
+              </svg>
+            {/if}
+          </CardContent>
+        </Card>
+      {/if}
 
       <!-- Provisioning progress -->
       {#if cluster.status === 'pending' || cluster.status === 'provisioning'}
@@ -428,6 +547,24 @@
           <Button href={`/api/v1/clusters/${cluster.id}/kubeconfig`} download>
             <Download class="h-4 w-4" />
             Download kubeconfig
+          </Button>
+        </div>
+      {/if}
+
+      {#if cluster.status === 'ready' || cluster.status === 'failed' || cluster.status === 'scaling'}
+        <div class="mt-4">
+          <Button
+            variant="destructive"
+            size="sm"
+            onclick={() => {
+              destroyConfirmName = '';
+              destroyError = null;
+              destroyModalOpen = true;
+            }}
+            disabled={destroyInFlight}
+            data-testid="destroy-cluster"
+          >
+            Destroy cluster
           </Button>
         </div>
       {/if}
@@ -536,6 +673,59 @@
           Installing…
         {:else}
           Install
+        {/if}
+      </Button>
+    </DialogFooter>
+  </DialogContent>
+</Dialog>
+
+<Dialog bind:open={destroyModalOpen}>
+  <DialogContent data-testid="destroy-modal">
+    <DialogHeader>
+      <DialogTitle>Destroy cluster</DialogTitle>
+      <DialogDescription>
+        This action is irreversible. All cluster data will be deleted from Hetzner. Type <strong
+          >{cluster?.name}</strong
+        > to confirm.
+      </DialogDescription>
+    </DialogHeader>
+
+    <div class="space-y-3 py-2">
+      <Input
+        type="text"
+        bind:value={destroyConfirmName}
+        placeholder={cluster?.name ?? ''}
+        data-testid="destroy-confirm-name"
+      />
+      {#if destroyError}
+        <div
+          role="alert"
+          class="rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive"
+        >
+          {destroyError}
+        </div>
+      {/if}
+    </div>
+
+    <DialogFooter>
+      <Button
+        variant="outline"
+        onclick={() => (destroyModalOpen = false)}
+        disabled={destroyInFlight}
+      >
+        Cancel
+      </Button>
+      <Button
+        variant="destructive"
+        onclick={onDestroyCluster}
+        disabled={destroyInFlight || destroyConfirmName !== (cluster?.name ?? '')}
+        data-testid="destroy-confirm"
+      >
+        {#if destroyInFlight}
+          <Loader2 class="mr-2 h-4 w-4 animate-spin" />
+          Destroying…
+        {:else}
+          Destroy
         {/if}
       </Button>
     </DialogFooter>
