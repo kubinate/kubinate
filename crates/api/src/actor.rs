@@ -241,35 +241,25 @@ where
 /// Admin role in the resolved organization, *and* whose session
 /// has cleared the MFA gate (`Session.mfa_satisfied = true`).
 ///
-/// Sprint 4 ticket 05; ADR-0009 §MFA: "Enforced for accounts with
-/// Admin or Owner roles in Phase 3+."
+/// ADR-0009 §MFA: "Enforced for accounts with Admin or Owner roles
+/// in Phase 3+." All state-mutating Owner/Admin routes use this
+/// extractor; read-only routes use the plain [`Actor`].
 ///
-/// Routes that should adopt this extractor (annotation only — this
-/// commit ships the extractor; handler migrations are a follow-up
-/// gated on `security`-role review per CONTRIBUTING.md):
-///
-/// - `POST /v1/billing/checkout` — already checks Owner-only at
-///   the handler level; replace the in-handler check with this
-///   extractor + a follow-up strict-Owner discriminator.
-/// - `DELETE /v1/clusters/:id` — destroy is high-blast-radius.
-/// - `POST /v1/clusters/:id/workers` — scale-out/in changes
-///   billable resource counts.
-/// - `POST /v1/integrations/hetzner/credentials` — credential
-///   management.
-/// - Every `POST /v1/organizations/:org_id/{invites, members,
-///   roles}` route in `team::org_routes()`.
+/// Enforced on:
+/// - `POST   /v1/clusters`                         (`clusters::create`)
+/// - `DELETE /v1/clusters/:id`                     (`clusters::destroy`)
+/// - `POST   /v1/clusters/:id/workers`             (`clusters::scale_workers`)
+/// - `POST   /v1/billing/checkout`                 (`billing::start_checkout`)
+/// - `POST   /v1/integrations/hetzner/credentials` (`integrations::create`)
+/// - `DELETE /v1/integrations/hetzner/credentials/:id` (`integrations::remove`)
+/// - `POST   /v1/organizations/:id/invites`        (`team::create_invite`)
+/// - `DELETE /v1/organizations/:id/invites/:id`    (`team::revoke_invite`)
+/// - `PATCH  /v1/organizations/:id/members/:id`    (`team::update_role`)
+/// - `DELETE /v1/organizations/:id/members/:id`    (`team::remove_member`)
 ///
 /// Why a single extractor rather than `Owner` + `Admin` variants:
-/// the headline gate is MFA, not role granularity. The
-/// strictly-Owner routes (billing) keep their in-handler check
-/// alongside this extractor so the role granularity is explicit
-/// at the route the granularity matters for.
-///
-/// `dead_code` allowed because the extractor is intentionally
-/// First in-tree consumer is `clusters::destroy` — adopted in
-/// Sprint 4 ticket 05's route-migration pass. Subsequent
-/// Owner/Admin routes are migrated per-PR with `security`-role
-/// review per CONTRIBUTING.md.
+/// the headline gate is MFA, not role granularity. Routes that need
+/// Owner-only (billing) add an in-handler role check alongside this.
 #[derive(Debug, Clone, Copy)]
 pub struct OwnerActor {
     /// The wrapped [`Actor`]. Same shape — `OwnerActor` exists
