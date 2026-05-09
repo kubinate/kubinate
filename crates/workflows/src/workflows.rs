@@ -701,8 +701,8 @@ mod tests {
         assert_eq!(created[1].name, "acme-prod-worker-00");
     }
 
-    /// Sprint 2 ticket 07 — install_addon happy path with a fake
-    /// HelmExecutor that records the parameters it received.
+    /// Sprint 2 ticket 07 — `install_addon` happy path with a fake
+    /// `HelmExecutor` that records the parameters it received.
     struct FakeHelm {
         calls: Mutex<Vec<InstallParams>>,
         fail_with: Option<HelmError>,

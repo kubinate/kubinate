@@ -86,10 +86,7 @@ mod tests {
         // `catalog::lookup` returns `Invalid` for empty-version paths
         // by going through the catalog first — so this test asserts
         // the helper still distinguishes empty version from valid.
-        assert!(matches!(
-            super::pre_check(&new),
-            Err(PlatformError::Invalid(_))
-        ));
+        assert!(matches!(pre_check(&new), Err(PlatformError::Invalid(_))));
     }
 
     #[test]
@@ -98,15 +95,14 @@ mod tests {
             addon: "ingress-nginx".into(),
             version: "4.10.0".into(),
         };
-        assert!(super::pre_check(&new).is_ok());
+        assert!(pre_check(&new).is_ok());
     }
-}
 
-#[cfg(test)]
-fn pre_check(new: &NewAddon) -> Result<(), PlatformError> {
-    if new.version.trim().is_empty() {
-        return Err(PlatformError::Invalid("version must not be empty".into()));
+    fn pre_check(new: &NewAddon) -> Result<(), PlatformError> {
+        if new.version.trim().is_empty() {
+            return Err(PlatformError::Invalid("version must not be empty".into()));
+        }
+        let _ = catalog::lookup(&new.addon)?;
+        Ok(())
     }
-    let _ = catalog::lookup(&new.addon)?;
-    Ok(())
 }
