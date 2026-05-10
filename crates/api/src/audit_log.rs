@@ -1,16 +1,17 @@
 //! `GET /v1/organizations/{org_id}/audit-log` — read-only audit log view.
 //!
-//! Returns the 100 most recent `audit_log_entries` rows for the calling
-//! actor's organisation. Gated on Owner or Admin role (enforced via the
-//! `OwnerActor` extractor which already covers both; any non-owner/admin
-//! session returns 403 before reaching the handler).
+//! Supports keyset (cursor) pagination via `?before=<uuid>` + `?limit=<n>`.
+//! UUID v7 primary keys are time-ordered, so `id < $before` gives a stable
+//! descending cursor without a secondary sort column. Default page size is
+//! 50; maximum is 200. The response is a flat array — callers detect "has
+//! more" by checking `entries.length === limit`.
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     routing::get,
     Json, Router,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -19,6 +20,14 @@ use kubinate_platform::error::PlatformError;
 
 pub fn routes() -> Router<AppState> {
     Router::new().route("/audit-log", get(list_audit_log))
+}
+
+#[derive(Debug, Deserialize)]
+struct AuditLogQuery {
+    /// Cursor — return entries whose id is strictly less than this UUID.
+    before: Option<Uuid>,
+    /// Page size. Clamped to [1, 200]; defaults to 50.
+    limit: Option<u32>,
 }
 
 #[derive(Debug, Serialize)]
@@ -40,6 +49,7 @@ async fn list_audit_log(
     State(state): State<AppState>,
     owner: OwnerActor,
     Path(org_id): Path<Uuid>,
+    Query(q): Query<AuditLogQuery>,
 ) -> Result<Json<Vec<AuditLogEntry>>, ApiError> {
     let actor = owner.inner;
     if actor.organization_id != org_id {
@@ -47,6 +57,7 @@ async fn list_audit_log(
             "actor's active organization does not match the path".into(),
         )));
     }
+    let limit = i64::from(q.limit.unwrap_or(50).clamp(1, 200));
 
     let mut tx = state.db.begin().await.map_err(PlatformError::from)?;
     sqlx::query(&format!("SET LOCAL app.current_tenant_id = '{org_id}'"))
@@ -54,29 +65,59 @@ async fn list_audit_log(
         .await
         .map_err(PlatformError::from)?;
 
-    let rows = sqlx::query_as::<_, AuditLogRow>(
-        "SELECT
-            e.id,
-            e.action,
-            e.resource_type,
-            e.resource_id,
-            e.decision,
-            e.reason,
-            e.actor_user_id,
-            u.email::text  AS actor_email,
-            u.display_name AS actor_display_name,
-            e.request_id,
-            e.created_at
-         FROM audit_log_entries e
-         LEFT JOIN users u ON u.id = e.actor_user_id
-         WHERE e.organization_id = $1
-         ORDER BY e.created_at DESC, e.id DESC
-         LIMIT 100",
-    )
-    .bind(org_id)
-    .fetch_all(&mut *tx)
-    .await
-    .map_err(PlatformError::from)?;
+    let rows = if let Some(before) = q.before {
+        sqlx::query_as::<_, AuditLogRow>(
+            "SELECT
+                e.id,
+                e.action,
+                e.resource_type,
+                e.resource_id,
+                e.decision,
+                e.reason,
+                e.actor_user_id,
+                u.email::text  AS actor_email,
+                u.display_name AS actor_display_name,
+                e.request_id,
+                e.created_at
+             FROM audit_log_entries e
+             LEFT JOIN users u ON u.id = e.actor_user_id
+             WHERE e.organization_id = $1
+               AND e.id < $2
+             ORDER BY e.id DESC
+             LIMIT $3",
+        )
+        .bind(org_id)
+        .bind(before)
+        .bind(limit)
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(PlatformError::from)?
+    } else {
+        sqlx::query_as::<_, AuditLogRow>(
+            "SELECT
+                e.id,
+                e.action,
+                e.resource_type,
+                e.resource_id,
+                e.decision,
+                e.reason,
+                e.actor_user_id,
+                u.email::text  AS actor_email,
+                u.display_name AS actor_display_name,
+                e.request_id,
+                e.created_at
+             FROM audit_log_entries e
+             LEFT JOIN users u ON u.id = e.actor_user_id
+             WHERE e.organization_id = $1
+             ORDER BY e.id DESC
+             LIMIT $2",
+        )
+        .bind(org_id)
+        .bind(limit)
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(PlatformError::from)?
+    };
 
     tx.commit().await.map_err(PlatformError::from)?;
 
