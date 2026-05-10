@@ -273,6 +273,7 @@
 
   let apiKeyCreateOpen = $state(false);
   let apiKeyName = $state('');
+  let apiKeyExpiresInDays = $state<number | undefined>(undefined);
   let apiKeyCreateInFlight = $state(false);
   let apiKeyCreateError = $state<string | null>(null);
   let newKeyToken = $state<string | null>(null);
@@ -292,6 +293,7 @@
 
   function openApiKeyCreateModal() {
     apiKeyName = '';
+    apiKeyExpiresInDays = undefined;
     apiKeyCreateError = null;
     newKeyToken = null;
     newKeyTokenCopied = false;
@@ -314,7 +316,7 @@
     apiKeyCreateInFlight = true;
     apiKeyCreateError = null;
     try {
-      const result = await createApiKey(name);
+      const result = await createApiKey(name, apiKeyExpiresInDays);
       newKeyToken = result.token;
       await refreshApiKeys();
     } catch (err) {
@@ -358,6 +360,11 @@
   function fmtLastUsed(iso: string | null | undefined): string {
     if (!iso) return 'never used';
     return new Date(iso).toLocaleString();
+  }
+
+  function fmtExpiry(iso: string | null | undefined): string {
+    if (!iso) return 'Never';
+    return new Date(iso).toLocaleDateString();
   }
 
   onMount(() => {
@@ -564,6 +571,7 @@
             <TableHead>Prefix</TableHead>
             <TableHead>Created</TableHead>
             <TableHead>Last used</TableHead>
+            <TableHead>Expires</TableHead>
             <TableHead class="w-[100px]">Actions</TableHead>
           </TableRow>
         </TableHeader>
@@ -578,6 +586,9 @@
               >
               <TableCell class="text-sm text-muted-foreground">
                 {k.last_used_at ? new Date(k.last_used_at).toLocaleString() : 'never'}
+              </TableCell>
+              <TableCell class="text-sm text-muted-foreground">
+                {fmtExpiry(k.expires_at)}
               </TableCell>
               <TableCell>
                 <Button
@@ -726,6 +737,22 @@
             placeholder="e.g. CI pipeline"
             data-testid="api-key-name"
           />
+        </div>
+        <div class="space-y-1.5">
+          <Label for="api-key-expires">Expires in</Label>
+          <select
+            id="api-key-expires"
+            class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            onchange={(e) => {
+              const v = (e.target as HTMLSelectElement).value;
+              apiKeyExpiresInDays = v ? Number(v) : undefined;
+            }}
+          >
+            <option value="">Never</option>
+            <option value="30">30 days</option>
+            <option value="90">90 days</option>
+            <option value="365">1 year</option>
+          </select>
         </div>
 
         {#if apiKeyCreateError}

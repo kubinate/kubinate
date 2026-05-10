@@ -42,11 +42,14 @@ struct ApiKeyView {
     token_prefix: String,
     created_at: OffsetDateTime,
     last_used_at: Option<OffsetDateTime>,
+    expires_at: Option<OffsetDateTime>,
 }
 
 #[derive(Deserialize)]
 struct CreateRequest {
     name: String,
+    /// Days until expiry. `None` / absent → no expiry.
+    expires_in_days: Option<u32>,
 }
 
 #[derive(Serialize)]
@@ -71,7 +74,7 @@ async fn list_api_keys(
         .map_err(PlatformError::from)?;
 
     let rows = sqlx::query_as::<_, ApiKeyRow>(
-        "SELECT id, name, token_prefix, created_at, last_used_at
+        "SELECT id, name, token_prefix, created_at, last_used_at, expires_at
          FROM api_keys
          WHERE user_id = $1 AND revoked_at IS NULL
          ORDER BY created_at DESC",
@@ -117,6 +120,9 @@ async fn create_api_key(
     let org_id = actor.organization_id;
     let user_id = actor.user_id;
     let id = Uuid::now_v7();
+    let expires_at = req
+        .expires_in_days
+        .map(|days| OffsetDateTime::now_utc() + time::Duration::days(i64::from(days)));
 
     let mut tx = state.db.begin().await.map_err(PlatformError::from)?;
     sqlx::query(&format!("SET LOCAL app.current_tenant_id = '{org_id}'"))
@@ -126,9 +132,9 @@ async fn create_api_key(
 
     let row = sqlx::query_as::<_, ApiKeyRow>(
         "INSERT INTO api_keys
-             (id, organization_id, user_id, kind, name, token_hash, token_prefix, scopes)
-         VALUES ($1, $2, $3, 'personal', $4, $5, $6, '[]')
-         RETURNING id, name, token_prefix, created_at, last_used_at",
+             (id, organization_id, user_id, kind, name, token_hash, token_prefix, scopes, expires_at)
+         VALUES ($1, $2, $3, 'personal', $4, $5, $6, '[]', $7)
+         RETURNING id, name, token_prefix, created_at, last_used_at, expires_at",
     )
     .bind(id)
     .bind(org_id)
@@ -136,6 +142,7 @@ async fn create_api_key(
     .bind(&name)
     .bind(&hash)
     .bind(&prefix)
+    .bind(expires_at)
     .fetch_one(&mut *tx)
     .await
     .map_err(PlatformError::from)?;
@@ -200,6 +207,7 @@ struct ApiKeyRow {
     token_prefix: String,
     created_at: OffsetDateTime,
     last_used_at: Option<OffsetDateTime>,
+    expires_at: Option<OffsetDateTime>,
 }
 
 impl From<ApiKeyRow> for ApiKeyView {
@@ -210,6 +218,7 @@ impl From<ApiKeyRow> for ApiKeyView {
             token_prefix: r.token_prefix,
             created_at: r.created_at,
             last_used_at: r.last_used_at,
+            expires_at: r.expires_at,
         }
     }
 }
