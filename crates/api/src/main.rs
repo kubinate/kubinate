@@ -15,6 +15,7 @@
 mod actor;
 mod agent;
 mod audit_ctx;
+mod audit_log;
 mod auth;
 mod auth_passkey;
 mod billing;
@@ -377,6 +378,7 @@ async fn main() -> anyhow::Result<()> {
         .nest("/v1/integrations/hetzner", integrations::routes())
         .nest("/v1/organizations/{org_id}", team::org_routes())
         .nest("/v1/organizations/{org_id}", billing::org_state_route())
+        .nest("/v1/organizations/{org_id}", audit_log::routes())
         .nest("/v1/invites", team::invite_accept_route())
         .nest("/v1/billing", billing::routes())
         .nest("/v1/observability", observability::routes())

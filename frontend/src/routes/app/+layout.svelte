@@ -19,7 +19,16 @@
     SidebarTrigger
   } from '$lib/components/ui/sidebar';
   import { Badge } from '$lib/components/ui/badge';
-  import { CreditCard, KeyRound, LayoutGrid, LogOut, Puzzle, Shield, Users } from 'lucide-svelte';
+  import {
+    CreditCard,
+    FileText,
+    KeyRound,
+    LayoutGrid,
+    LogOut,
+    Puzzle,
+    Shield,
+    Users
+  } from 'lucide-svelte';
   import type { MfaState } from '$lib/api/schemas';
 
   interface Props {
@@ -41,7 +50,8 @@
     { label: 'Team', href: '/app/settings/team', icon: Users },
     { label: 'Billing', href: '/app/settings/billing', icon: CreditCard },
     { label: 'Security', href: '/app/settings/security', icon: Shield },
-    { label: 'Integrations', href: '/app/settings/integrations', icon: KeyRound }
+    { label: 'Integrations', href: '/app/settings/integrations', icon: KeyRound },
+    { label: 'Audit log', href: '/app/settings/audit-log', icon: FileText }
   ];
 
   const userLabel = $derived(data.session.displayName || data.session.email || data.session.userId);

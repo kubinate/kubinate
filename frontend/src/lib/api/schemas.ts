@@ -318,3 +318,22 @@ export const recoveryRedeemResponseSchema = z.object({
   remaining: z.number()
 });
 export type RecoveryRedeemResponse = z.infer<typeof recoveryRedeemResponseSchema>;
+
+// -----------------------------------------------------------------------------
+// Audit log (Sprint 10)
+// -----------------------------------------------------------------------------
+
+export const auditLogEntrySchema = z.object({
+  id: z.string().uuid(),
+  action: z.string(),
+  resource_type: z.string(),
+  resource_id: z.string().nullable().optional(),
+  decision: z.string(),
+  reason: z.string().nullable().optional(),
+  actor_user_id: z.string().uuid().nullable().optional(),
+  actor_email: z.string().nullable().optional(),
+  actor_display_name: z.string().nullable().optional(),
+  request_id: z.string().nullable().optional(),
+  created_at: z.string()
+});
+export type AuditLogEntry = z.infer<typeof auditLogEntrySchema>;
