@@ -131,6 +131,64 @@ impl BillingService {
         Ok(session)
     }
 
+    /// Apply a completed Stripe Checkout Session: flip the org's plan
+    /// to the value embedded in session metadata and record the event.
+    ///
+    /// Called from the webhook handler on `checkout.session.completed`.
+    /// Idempotent — duplicate deliveries are deduplicated by
+    /// `append_event`'s unique-index on `stripe_event_id`.
+    ///
+    /// # Errors
+    /// Returns [`BillingError`] if the plan string is unrecognised, the
+    /// organisation cannot be found, or a database query fails.
+    pub async fn apply_checkout_completion(
+        &self,
+        stripe_event_id: &str,
+        organization_id: Uuid,
+        plan: BillingPlan,
+        payload: &serde_json::Value,
+    ) -> Result<(), BillingError> {
+        self.repo.update_plan(organization_id, plan).await?;
+        self.repo
+            .append_event(
+                stripe_event_id,
+                Some(organization_id),
+                "checkout.session.completed",
+                payload,
+                "plan_applied",
+            )
+            .await?;
+        Ok(())
+    }
+
+    /// Downgrade an org to the free plan when Stripe fires
+    /// `customer.subscription.deleted`.
+    ///
+    /// # Errors
+    /// Returns [`BillingError`] if the customer is unknown or a database
+    /// query fails.
+    pub async fn apply_subscription_cancelled(
+        &self,
+        stripe_event_id: &str,
+        customer_id: &str,
+        payload: &serde_json::Value,
+    ) -> Result<(), BillingError> {
+        let organization_id = self.repo.org_for_customer(customer_id).await?;
+        if let Some(org_id) = organization_id {
+            self.repo.update_plan(org_id, BillingPlan::Free).await?;
+            self.repo
+                .append_event(
+                    stripe_event_id,
+                    Some(org_id),
+                    "customer.subscription.deleted",
+                    payload,
+                    "plan_applied",
+                )
+                .await?;
+        }
+        Ok(())
+    }
+
     /// Persist a verified webhook delivery. Returns whether the event
     /// was newly written (false → duplicate retry).
     ///

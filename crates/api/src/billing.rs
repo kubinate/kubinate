@@ -157,11 +157,58 @@ async fn webhook(
         .and_then(|o| o.get("customer"))
         .and_then(|c| c.as_str());
 
-    let _written = state
-        .billing_service
-        .record_event(stripe_event_id, event_type, customer_id, &envelope)
-        .await
-        .map_err(billing_to_api)?;
+    match event_type {
+        "checkout.session.completed" => {
+            let obj = envelope
+                .get("data")
+                .and_then(|d| d.get("object"))
+                .ok_or_else(|| {
+                    ApiError::from(PlatformError::Invalid("missing data.object".into()))
+                })?;
+            let meta = obj
+                .get("metadata")
+                .ok_or_else(|| ApiError::from(PlatformError::Invalid("missing metadata".into())))?;
+            let org_id: Uuid = meta
+                .get("organization_id")
+                .and_then(|v| v.as_str())
+                .and_then(|s| s.parse().ok())
+                .ok_or_else(|| {
+                    ApiError::from(PlatformError::Invalid(
+                        "missing or invalid metadata.organization_id".into(),
+                    ))
+                })?;
+            let plan: BillingPlan = meta
+                .get("target_plan")
+                .and_then(|v| v.as_str())
+                .and_then(|s| serde_json::from_value(serde_json::Value::String(s.to_owned())).ok())
+                .ok_or_else(|| {
+                    ApiError::from(PlatformError::Invalid(
+                        "missing or invalid metadata.target_plan".into(),
+                    ))
+                })?;
+            state
+                .billing_service
+                .apply_checkout_completion(stripe_event_id, org_id, plan, &envelope)
+                .await
+                .map_err(billing_to_api)?;
+        }
+        "customer.subscription.deleted" => {
+            if let Some(cid) = customer_id {
+                state
+                    .billing_service
+                    .apply_subscription_cancelled(stripe_event_id, cid, &envelope)
+                    .await
+                    .map_err(billing_to_api)?;
+            }
+        }
+        _ => {
+            state
+                .billing_service
+                .record_event(stripe_event_id, event_type, customer_id, &envelope)
+                .await
+                .map_err(billing_to_api)?;
+        }
+    }
 
     Ok(StatusCode::OK)
 }

@@ -32,12 +32,13 @@ export async function listApiKeys(fetchImpl: typeof fetch = fetch): Promise<ApiK
 /** `POST /v1/api-keys` — returns view + plaintext token (shown once). */
 export async function createApiKey(
   name: string,
+  expiresInDays?: number,
   fetchImpl: typeof fetch = fetch
 ): Promise<CreateApiKeyResponse> {
   const response = await fetchImpl('/api/v1/api-keys', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ name })
+    body: JSON.stringify({ name, expires_in_days: expiresInDays ?? null })
   });
   return parseResponse(response, createApiKeyResponseSchema);
 }

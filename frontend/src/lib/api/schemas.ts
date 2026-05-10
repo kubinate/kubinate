@@ -328,7 +328,8 @@ export const apiKeyViewSchema = z.object({
   name: z.string(),
   token_prefix: z.string(),
   created_at: z.string(),
-  last_used_at: z.string().nullable().optional()
+  last_used_at: z.string().nullable().optional(),
+  expires_at: z.string().nullable().optional()
 });
 export type ApiKeyView = z.infer<typeof apiKeyViewSchema>;
 
