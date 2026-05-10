@@ -73,7 +73,10 @@ where
                 match resolve_api_key(&app_state, &token).await {
                     Ok(Some(actor)) => return Ok(actor),
                     Ok(None) => {
-                        return Err(reject(StatusCode::UNAUTHORIZED, "invalid or revoked API key"))
+                        return Err(reject(
+                            StatusCode::UNAUTHORIZED,
+                            "invalid or revoked API key",
+                        ))
                     }
                     Err(resp) => return Err(resp),
                 }
@@ -126,7 +129,10 @@ async fn resolve_api_key(state: &AppState, token: &str) -> Result<Option<Actor>,
     let hash: Vec<u8> = Sha256::digest(token.as_bytes()).to_vec();
 
     let mut tx = state.db.begin().await.map_err(|_| {
-        reject(StatusCode::INTERNAL_SERVER_ERROR, "api key auth: db begin failed")
+        reject(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "api key auth: db begin failed",
+        )
     })?;
 
     // Activate the cross-tenant bypass policy so we can find the key by

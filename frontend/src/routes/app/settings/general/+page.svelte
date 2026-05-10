@@ -4,7 +4,13 @@
   import { getOrganization, updateOrganization } from '$lib/api/organization';
   import type { OrgView } from '$lib/api/schemas';
   import { Button } from '$lib/components/ui/button';
-  import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '$lib/components/ui/card';
+  import {
+    Card,
+    CardHeader,
+    CardTitle,
+    CardDescription,
+    CardContent
+  } from '$lib/components/ui/card';
   import { Input } from '$lib/components/ui/input';
   import { Label } from '$lib/components/ui/label';
 

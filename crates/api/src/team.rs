@@ -304,22 +304,19 @@ async fn get_org(
         )));
     }
     let mut tx = state.db.begin().await.map_err(PlatformError::from)?;
-    sqlx::query(&format!(
-        "SET LOCAL app.current_tenant_id = '{org_id}'"
-    ))
-    .execute(&mut *tx)
-    .await
-    .map_err(PlatformError::from)?;
-
-    let row: Option<(Uuid, String, String, OffsetDateTime, OffsetDateTime)> =
-        sqlx::query_as(
-            "SELECT id, slug, display_name, created_at, updated_at
-             FROM organizations WHERE id = $1",
-        )
-        .bind(org_id)
-        .fetch_optional(&mut *tx)
+    sqlx::query(&format!("SET LOCAL app.current_tenant_id = '{org_id}'"))
+        .execute(&mut *tx)
         .await
         .map_err(PlatformError::from)?;
+
+    let row: Option<(Uuid, String, String, OffsetDateTime, OffsetDateTime)> = sqlx::query_as(
+        "SELECT id, slug, display_name, created_at, updated_at
+             FROM organizations WHERE id = $1",
+    )
+    .bind(org_id)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(PlatformError::from)?;
 
     tx.commit().await.map_err(PlatformError::from)?;
 
@@ -361,25 +358,22 @@ async fn update_org(
     }
 
     let mut tx = state.db.begin().await.map_err(PlatformError::from)?;
-    sqlx::query(&format!(
-        "SET LOCAL app.current_tenant_id = '{org_id}'"
-    ))
-    .execute(&mut *tx)
-    .await
-    .map_err(PlatformError::from)?;
+    sqlx::query(&format!("SET LOCAL app.current_tenant_id = '{org_id}'"))
+        .execute(&mut *tx)
+        .await
+        .map_err(PlatformError::from)?;
 
-    let row: Option<(Uuid, String, String, OffsetDateTime, OffsetDateTime)> =
-        sqlx::query_as(
-            "UPDATE organizations
+    let row: Option<(Uuid, String, String, OffsetDateTime, OffsetDateTime)> = sqlx::query_as(
+        "UPDATE organizations
              SET display_name = $2
              WHERE id = $1
              RETURNING id, slug, display_name, created_at, updated_at",
-        )
-        .bind(org_id)
-        .bind(&display_name)
-        .fetch_optional(&mut *tx)
-        .await
-        .map_err(PlatformError::from)?;
+    )
+    .bind(org_id)
+    .bind(&display_name)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(PlatformError::from)?;
 
     tx.commit().await.map_err(PlatformError::from)?;
 

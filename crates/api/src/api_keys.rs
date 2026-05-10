@@ -65,12 +65,10 @@ async fn list_api_keys(
     let user_id = actor.user_id;
 
     let mut tx = state.db.begin().await.map_err(PlatformError::from)?;
-    sqlx::query(&format!(
-        "SET LOCAL app.current_tenant_id = '{org_id}'"
-    ))
-    .execute(&mut *tx)
-    .await
-    .map_err(PlatformError::from)?;
+    sqlx::query(&format!("SET LOCAL app.current_tenant_id = '{org_id}'"))
+        .execute(&mut *tx)
+        .await
+        .map_err(PlatformError::from)?;
 
     let rows = sqlx::query_as::<_, ApiKeyRow>(
         "SELECT id, name, token_prefix, created_at, last_used_at
@@ -121,12 +119,10 @@ async fn create_api_key(
     let id = Uuid::now_v7();
 
     let mut tx = state.db.begin().await.map_err(PlatformError::from)?;
-    sqlx::query(&format!(
-        "SET LOCAL app.current_tenant_id = '{org_id}'"
-    ))
-    .execute(&mut *tx)
-    .await
-    .map_err(PlatformError::from)?;
+    sqlx::query(&format!("SET LOCAL app.current_tenant_id = '{org_id}'"))
+        .execute(&mut *tx)
+        .await
+        .map_err(PlatformError::from)?;
 
     let row = sqlx::query_as::<_, ApiKeyRow>(
         "INSERT INTO api_keys
@@ -169,12 +165,10 @@ async fn revoke_api_key(
     let user_id = actor.user_id;
 
     let mut tx = state.db.begin().await.map_err(PlatformError::from)?;
-    sqlx::query(&format!(
-        "SET LOCAL app.current_tenant_id = '{org_id}'"
-    ))
-    .execute(&mut *tx)
-    .await
-    .map_err(PlatformError::from)?;
+    sqlx::query(&format!("SET LOCAL app.current_tenant_id = '{org_id}'"))
+        .execute(&mut *tx)
+        .await
+        .map_err(PlatformError::from)?;
 
     let affected = sqlx::query(
         "UPDATE api_keys
