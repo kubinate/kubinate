@@ -17,6 +17,7 @@
     webauthnJsonToGet
   } from '$lib/api/passkey';
   import type { PasskeyView } from '$lib/api/schemas';
+  import { listApiKeys, createApiKey, revokeApiKey, type ApiKeyView } from '$lib/api/api-keys';
   import { Button } from '$lib/components/ui/button';
   import {
     Card,
@@ -265,6 +266,89 @@
     }
   }
 
+  // --- API key state ---------------------------------------------------------
+
+  let apiKeys = $state<ApiKeyView[] | null>(null);
+  let apiKeyLoadError = $state<string | null>(null);
+
+  let apiKeyCreateOpen = $state(false);
+  let apiKeyName = $state('');
+  let apiKeyCreateInFlight = $state(false);
+  let apiKeyCreateError = $state<string | null>(null);
+  let newKeyToken = $state<string | null>(null);
+  let newKeyTokenCopied = $state(false);
+
+  let revokingKeyId = $state<string | null>(null);
+  let apiKeyRevokeError = $state<string | null>(null);
+
+  async function refreshApiKeys() {
+    try {
+      apiKeys = await listApiKeys();
+      apiKeyLoadError = null;
+    } catch (err) {
+      apiKeyLoadError = describe(err);
+    }
+  }
+
+  function openApiKeyCreateModal() {
+    apiKeyName = '';
+    apiKeyCreateError = null;
+    newKeyToken = null;
+    newKeyTokenCopied = false;
+    apiKeyCreateOpen = true;
+  }
+
+  function closeApiKeyCreateModal() {
+    if (apiKeyCreateInFlight) return;
+    apiKeyCreateOpen = false;
+    newKeyToken = null;
+    newKeyTokenCopied = false;
+  }
+
+  async function confirmCreateApiKey() {
+    const name = apiKeyName.trim();
+    if (name.length === 0) {
+      apiKeyCreateError = 'Name is required';
+      return;
+    }
+    apiKeyCreateInFlight = true;
+    apiKeyCreateError = null;
+    try {
+      const result = await createApiKey(name);
+      newKeyToken = result.token;
+      await refreshApiKeys();
+    } catch (err) {
+      apiKeyCreateError = describe(err);
+    } finally {
+      apiKeyCreateInFlight = false;
+    }
+  }
+
+  async function copyApiKeyToken() {
+    if (!newKeyToken) return;
+    try {
+      await navigator.clipboard.writeText(newKeyToken);
+      newKeyTokenCopied = true;
+    } catch {
+      // clipboard unavailable
+    }
+  }
+
+  async function revokeKey(id: string) {
+    if (!window.confirm('Revoke this API key? Existing scripts using it will stop working.'))
+      return;
+    revokingKeyId = id;
+    apiKeyRevokeError = null;
+    try {
+      await revokeApiKey(id);
+      await refreshApiKeys();
+    } catch (err) {
+      apiKeyRevokeError = describe(err);
+    } finally {
+      revokingKeyId = null;
+    }
+  }
+
   // --- formatting -----------------------------------------------------------
 
   function fmtDate(iso: string): string {
@@ -276,7 +360,10 @@
     return new Date(iso).toLocaleString();
   }
 
-  onMount(refreshPasskeys);
+  onMount(() => {
+    refreshPasskeys();
+    refreshApiKeys();
+  });
 </script>
 
 <svelte:head>
@@ -437,6 +524,89 @@
   </CardContent>
 </Card>
 
+<!-- API keys section -->
+<Card class="mt-6">
+  <CardHeader class="flex flex-row items-center justify-between">
+    <div>
+      <CardTitle>API keys</CardTitle>
+      <CardDescription>
+        Personal access tokens for programmatic access. Each token is shown once.
+      </CardDescription>
+    </div>
+    <Button variant="outline" onclick={openApiKeyCreateModal} data-testid="create-api-key-button">
+      <Plus class="mr-2 h-4 w-4" /> Create key
+    </Button>
+  </CardHeader>
+  <CardContent class="space-y-4">
+    {#if apiKeyLoadError}
+      <div
+        class="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+        role="alert"
+      >
+        {apiKeyLoadError}
+      </div>
+    {:else if apiKeys === null}
+      <div class="space-y-2">
+        {#each [1, 2] as _ (_)}
+          <div class="h-10 rounded-md bg-muted animate-pulse"></div>
+        {/each}
+      </div>
+    {:else if apiKeys.length === 0}
+      <div class="flex flex-col items-center justify-center py-8 text-center">
+        <KeyRound class="h-8 w-8 text-muted-foreground mb-3" />
+        <p class="text-sm text-muted-foreground">No API keys yet.</p>
+      </div>
+    {:else}
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Name</TableHead>
+            <TableHead>Prefix</TableHead>
+            <TableHead>Created</TableHead>
+            <TableHead>Last used</TableHead>
+            <TableHead class="w-[100px]">Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {#each apiKeys as k (k.id)}
+            <TableRow data-testid={`api-key-row-${k.id}`}>
+              <TableCell class="font-medium text-sm">{k.name}</TableCell>
+              <TableCell class="font-mono text-sm text-muted-foreground">{k.token_prefix}</TableCell
+              >
+              <TableCell class="text-sm text-muted-foreground"
+                >{new Date(k.created_at).toLocaleDateString()}</TableCell
+              >
+              <TableCell class="text-sm text-muted-foreground">
+                {k.last_used_at ? new Date(k.last_used_at).toLocaleString() : 'never'}
+              </TableCell>
+              <TableCell>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onclick={() => revokeKey(k.id)}
+                  disabled={revokingKeyId === k.id}
+                  data-testid={`revoke-key-${k.id}`}
+                >
+                  {revokingKeyId === k.id ? 'Revoking…' : 'Revoke'}
+                </Button>
+              </TableCell>
+            </TableRow>
+          {/each}
+        </TableBody>
+      </Table>
+    {/if}
+
+    {#if apiKeyRevokeError}
+      <div
+        class="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+        role="alert"
+      >
+        {apiKeyRevokeError}
+      </div>
+    {/if}
+  </CardContent>
+</Card>
+
 <!-- Register passkey modal -->
 <Dialog bind:open={registerModalOpen}>
   <DialogContent>
@@ -532,6 +702,85 @@
         {recoveryCopied ? 'Copied' : 'Copy all'}
       </Button>
     </DialogFooter>
+  </DialogContent>
+</Dialog>
+
+<!-- Create API key modal -->
+<Dialog bind:open={apiKeyCreateOpen}>
+  <DialogContent>
+    <DialogHeader>
+      <DialogTitle>Create API key</DialogTitle>
+      <DialogDescription>
+        Give this key a name so you can identify it later. The token is shown only once.
+      </DialogDescription>
+    </DialogHeader>
+
+    {#if newKeyToken === null}
+      <div class="space-y-3 py-2">
+        <div class="space-y-1.5">
+          <Label for="api-key-name">Name</Label>
+          <Input
+            id="api-key-name"
+            type="text"
+            bind:value={apiKeyName}
+            placeholder="e.g. CI pipeline"
+            data-testid="api-key-name"
+          />
+        </div>
+
+        {#if apiKeyCreateError}
+          <div
+            class="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+            role="alert"
+          >
+            {apiKeyCreateError}
+          </div>
+        {/if}
+      </div>
+
+      <DialogFooter>
+        <Button variant="outline" onclick={closeApiKeyCreateModal} disabled={apiKeyCreateInFlight}>
+          Cancel
+        </Button>
+        <Button
+          onclick={confirmCreateApiKey}
+          disabled={apiKeyCreateInFlight}
+          data-testid="api-key-create-confirm"
+        >
+          {apiKeyCreateInFlight ? 'Creating…' : 'Create'}
+        </Button>
+      </DialogFooter>
+    {:else}
+      <div class="space-y-3 py-2">
+        <div
+          class="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/40 p-3 space-y-2"
+        >
+          <p class="text-xs font-medium text-amber-800 dark:text-amber-300">
+            This token will not be shown again. Save it now.
+          </p>
+          <code
+            class="block rounded bg-white dark:bg-zinc-900 border border-amber-200 dark:border-amber-800 px-3 py-2 font-mono text-sm break-all"
+            data-testid="new-api-key-token"
+          >
+            {newKeyToken}
+          </code>
+        </div>
+
+        <div class="rounded-md border bg-muted/40 px-3 py-2 space-y-1">
+          <p class="text-xs font-medium text-muted-foreground">Usage</p>
+          <code class="block font-mono text-xs break-all text-foreground">
+            Authorization: Bearer {newKeyToken}
+          </code>
+        </div>
+      </div>
+
+      <DialogFooter>
+        <Button variant="outline" onclick={copyApiKeyToken} data-testid="copy-api-key-token">
+          {newKeyTokenCopied ? 'Copied' : 'Copy token'}
+        </Button>
+        <Button onclick={closeApiKeyCreateModal} data-testid="api-key-done">Done</Button>
+      </DialogFooter>
+    {/if}
   </DialogContent>
 </Dialog>
 

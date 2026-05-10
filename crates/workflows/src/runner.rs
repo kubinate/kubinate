@@ -463,6 +463,91 @@ impl LocalRunner {
         });
     }
 
+    /// Run an addon uninstall synchronously. Status transitions:
+    /// `uninstalling → uninstalled` on success, `failed` on error.
+    ///
+    /// # Errors
+    /// Returns an error if Helm fails or if the database status update fails.
+    pub async fn run_uninstall_addon(
+        &self,
+        organization_id: Uuid,
+        cluster_addon_id: Uuid,
+        helm_release: String,
+        namespace: String,
+        kubeconfig_path: std::path::PathBuf,
+    ) -> Result<(), anyhow::Error> {
+        let audit = AuditContext {
+            actor_user_id: None,
+            request_id: Some(Uuid::now_v7().to_string()),
+            ip: None,
+            user_agent: Some("runner/uninstall-addon".to_string()),
+        };
+
+        let result = self
+            .helm
+            .uninstall(&kubeconfig_path, &helm_release, &namespace)
+            .await;
+
+        let _ = tokio::fs::remove_file(&kubeconfig_path).await;
+
+        match result {
+            Ok(()) => {
+                self.addon_repo
+                    .update_status(
+                        organization_id,
+                        cluster_addon_id,
+                        AddonStatus::Uninstalled,
+                        None,
+                        &audit,
+                    )
+                    .await?;
+                Ok(())
+            }
+            Err(err) => {
+                let reason = err.to_string();
+                self.addon_repo
+                    .update_status(
+                        organization_id,
+                        cluster_addon_id,
+                        AddonStatus::Failed,
+                        Some(&reason),
+                        &audit,
+                    )
+                    .await
+                    .ok();
+                Err(anyhow::anyhow!("addon uninstall failed: {reason}"))
+            }
+        }
+    }
+
+    /// Spawn an addon uninstall on the runtime; errors are logged and
+    /// reflected in the addon row.
+    pub fn spawn_uninstall_addon(
+        &self,
+        organization_id: Uuid,
+        cluster_addon_id: Uuid,
+        helm_release: String,
+        namespace: String,
+        kubeconfig_path: std::path::PathBuf,
+    ) {
+        let me = self.clone();
+        tokio::spawn(async move {
+            let _g = WorkflowInflightGuard::new("uninstall_addon");
+            if let Err(err) = me
+                .run_uninstall_addon(
+                    organization_id,
+                    cluster_addon_id,
+                    helm_release,
+                    namespace,
+                    kubeconfig_path,
+                )
+                .await
+            {
+                tracing::error!(error = %err, "addon uninstall run errored");
+            }
+        });
+    }
+
     /// Sprint 3 ticket 08. Scale-out: add `count` workers to a Ready
     /// cluster. Caller is the API handler; resolution of CP endpoint
     /// + join token + `start_index` happens here.

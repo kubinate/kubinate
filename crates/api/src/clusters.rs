@@ -8,16 +8,17 @@
 
 use axum::{
     body::Body,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::{header, HeaderMap, StatusCode},
     response::{
         sse::{Event, KeepAlive, Sse},
         IntoResponse, Response,
     },
-    routing::{get, post},
+    routing::{delete, get, post},
     Json, Router,
 };
 use futures::stream::{self, Stream};
+use kubinate_addons::model::AddonStatus;
 use kubinate_cluster::{
     model::{Cluster, NewCluster},
     service::{ALLOWED_REGIONS, ALLOWED_SERVER_TYPES},
@@ -53,8 +54,10 @@ pub fn routes() -> Router<AppState> {
         .route("/{id}", get(read).delete(destroy))
         .route("/{id}/kubeconfig", get(download_kubeconfig))
         .route("/{id}/addons", post(install_addon).get(list_addons))
+        .route("/{id}/addons/{addon_id}", delete(uninstall_addon))
         .route("/{id}/workers", post(scale_workers))
         .route("/{id}/events", get(stream_events))
+        .route("/{id}/metrics", get(query_metrics))
 }
 
 #[derive(Deserialize, Serialize)]
@@ -97,6 +100,10 @@ struct ClusterView {
     kubeconfig_available: bool,
     created_at: OffsetDateTime,
     updated_at: OffsetDateTime,
+    /// Last time the in-cluster agent sent a heartbeat. `None` = never connected.
+    agent_last_seen_at: Option<OffsetDateTime>,
+    /// Agent build version from the last heartbeat.
+    agent_version: String,
 }
 
 impl ClusterView {
@@ -128,6 +135,8 @@ impl ClusterView {
             kubeconfig_available: matches!(c.status, kubinate_cluster::model::ClusterStatus::Ready),
             created_at: c.created_at,
             updated_at: c.updated_at,
+            agent_last_seen_at: c.agent_last_seen_at,
+            agent_version: c.agent_version,
         }
     }
 }
@@ -614,7 +623,7 @@ struct AddonView {
     addon: String,
     version: String,
     helm_release: String,
-    status: kubinate_addons::model::AddonStatus,
+    status: AddonStatus,
     status_reason: Option<String>,
     created_at: OffsetDateTime,
     updated_at: OffsetDateTime,
@@ -819,4 +828,140 @@ async fn list_addons(
         .list_for_cluster(actor.organization_id, cluster_id)
         .await?;
     Ok(Json(rows.into_iter().map(AddonView::from).collect()))
+}
+
+/// `DELETE /v1/clusters/:id/addons/:addon_id` — uninstall an addon.
+///
+/// Gated on Owner/Admin. The addon must be in `ready` or `failed`
+/// state; any other state returns 409. Sets `status = uninstalling`
+/// synchronously, then spawns the background Helm workflow.
+async fn uninstall_addon(
+    State(state): State<AppState>,
+    owner: OwnerActor,
+    headers: HeaderMap,
+    Path((cluster_id, addon_id)): Path<(Uuid, Uuid)>,
+) -> Result<impl IntoResponse, ApiError> {
+    let actor = owner.inner;
+
+    let addon = state
+        .addon_service
+        .get_by_id(actor.organization_id, addon_id)
+        .await?
+        .ok_or_else(|| ApiError::from(PlatformError::NotFound(format!("addon/{addon_id}"))))?;
+
+    if addon.cluster_id != cluster_id {
+        return Err(ApiError::from(PlatformError::NotFound(format!(
+            "addon/{addon_id}"
+        ))));
+    }
+
+    if !matches!(addon.status, AddonStatus::Ready | AddonStatus::Failed) {
+        return Err(ApiError::from(PlatformError::Conflict(format!(
+            "addon must be ready or failed to uninstall (current: {:?})",
+            addon.status
+        ))));
+    }
+
+    let audit = audit_ctx::from_actor_and_headers(&actor, &headers);
+    state
+        .addon_service
+        .update_status(
+            actor.organization_id,
+            addon_id,
+            AddonStatus::Uninstalling,
+            None,
+            &audit,
+        )
+        .await?;
+
+    let spec = kubinate_addons::catalog::lookup(&addon.addon)?;
+    let namespace = spec.namespace.to_string();
+
+    let kubeconfig = state
+        .cluster_service
+        .fetch_kubeconfig(actor.organization_id, cluster_id)
+        .await?;
+    let kubeconfig_path = std::env::temp_dir().join(format!("kubinate-kc-{}.yaml", Uuid::now_v7()));
+    if let Err(err) = tokio::fs::write(&kubeconfig_path, kubeconfig.expose_secret()).await {
+        return Err(ApiError::from(PlatformError::Internal(anyhow::anyhow!(
+            "stage kubeconfig: {err}"
+        ))));
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ =
+            tokio::fs::set_permissions(&kubeconfig_path, std::fs::Permissions::from_mode(0o600))
+                .await;
+    }
+
+    state.runner.spawn_uninstall_addon(
+        actor.organization_id,
+        addon_id,
+        addon.helm_release.clone(),
+        namespace,
+        kubeconfig_path,
+    );
+
+    let mut view = AddonView::from(addon);
+    view.status = AddonStatus::Uninstalling;
+    Ok((StatusCode::ACCEPTED, Json(view)))
+}
+
+#[derive(Deserialize)]
+struct MetricsQueryParams {
+    metric: String,
+    /// Inclusive range start as Unix seconds (integer or float).
+    start: f64,
+    /// Inclusive range end as Unix seconds (integer or float).
+    end: f64,
+}
+
+#[derive(Serialize)]
+struct MetricsQueryResponse {
+    samples: Vec<kubinate_observability::metrics::Sample>,
+}
+
+/// `GET /v1/clusters/:id/metrics` — tenant-scoped range query for a
+/// cluster. Verifies cluster ownership, then delegates to the
+/// configured `MetricsStore`. The `organization_id` comes from the
+/// actor's authenticated session — never from the URL or query string.
+///
+/// Query params: `metric` (required), `start` (Unix s, required),
+/// `end` (Unix s, required).
+async fn query_metrics(
+    State(state): State<AppState>,
+    actor: Actor,
+    Path(cluster_id): Path<Uuid>,
+    Query(params): Query<MetricsQueryParams>,
+) -> Result<Json<MetricsQueryResponse>, ApiError> {
+    // Verify the cluster belongs to this actor's org (ownership check).
+    state
+        .cluster_repo
+        .get(actor.organization_id, cluster_id)
+        .await?;
+
+    #[allow(clippy::cast_possible_truncation)]
+    let start_ms = (params.start * 1000.0).round() as i64;
+    #[allow(clippy::cast_possible_truncation)]
+    let end_ms = (params.end * 1000.0).round() as i64;
+
+    let query = kubinate_observability::metrics::RangeQuery {
+        metric: params.metric,
+        label_eq: vec![],
+        start_ms,
+        end_ms,
+    };
+
+    let samples = state
+        .metrics_store
+        .query_range(actor.organization_id, &query)
+        .await
+        .map_err(|e| {
+            ApiError::from(kubinate_platform::error::PlatformError::Internal(
+                anyhow::anyhow!("metrics query: {e}"),
+            ))
+        })?;
+
+    Ok(Json(MetricsQueryResponse { samples }))
 }

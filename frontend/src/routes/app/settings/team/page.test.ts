@@ -82,7 +82,9 @@ describe('team settings page', () => {
           user_id: ALICE,
           session_id: '99999999-9999-9999-9999-999999999999',
           organization_id: ORG,
-          mfa_state: 'enrolled'
+          mfa_state: 'enrolled',
+          email: 'alice@example.test',
+          display_name: 'Alice'
         });
       }
       if (url.endsWith(`/v1/organizations/${ORG}/members`)) {
@@ -142,7 +144,9 @@ describe('team settings page', () => {
           user_id: ALICE,
           session_id: '99999999-9999-9999-9999-999999999999',
           organization_id: ORG,
-          mfa_state: 'enrolled'
+          mfa_state: 'enrolled',
+          email: 'alice@example.test',
+          display_name: 'Alice'
         });
       }
       if (url.endsWith(`/v1/organizations/${ORG}/members`)) {

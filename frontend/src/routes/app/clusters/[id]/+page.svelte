@@ -2,8 +2,16 @@
   import { page } from '$app/state';
   import { goto } from '$app/navigation';
   import { onDestroy, onMount } from 'svelte';
-  import { ApiError, getCluster, loadClusterCatalog } from '$lib/api/clusters';
-  import { installAddon, listAddons } from '$lib/api/addons';
+  import {
+    ApiError,
+    getCluster,
+    loadClusterCatalog,
+    destroyCluster,
+    getClusterMetrics,
+    scaleWorkers,
+    type MetricSample
+  } from '$lib/api/clusters';
+  import { installAddon, listAddons, uninstallAddon } from '$lib/api/addons';
   import { errorCategoryMessage, type AddonView, type ClusterView } from '$lib/api/schemas';
   import { Download, Loader2 } from 'lucide-svelte';
   import { Badge } from '$lib/components/ui/badge';
@@ -51,6 +59,9 @@
   let sseRetries = 0;
   let sseAbandoned = false;
 
+  let metricSamples = $state<MetricSample[]>([]);
+  let metricsLoading = $state(true);
+
   // Sprint 3 ticket 03 — addon panel state.
   let addons = $state<AddonView[] | null>(null);
   let availableAddons = $state<string[]>([]);
@@ -59,6 +70,17 @@
   let installError = $state<string | null>(null);
   let installAddonSlug = $state<string | null>(null);
   let installVersion = $state('');
+
+  let scaleInFlight = $state(false);
+  let scaleError = $state<string | null>(null);
+
+  let uninstallInFlight = $state<string | null>(null);
+  let uninstallError = $state<string | null>(null);
+
+  let destroyConfirmName = $state('');
+  let destroyModalOpen = $state(false);
+  let destroyInFlight = $state(false);
+  let destroyError = $state<string | null>(null);
 
   async function refresh() {
     try {
@@ -83,6 +105,25 @@
           : err instanceof Error
             ? err.message
             : 'Unknown error';
+    }
+  }
+
+  async function loadMetrics(clusterId: string) {
+    metricsLoading = true;
+    const endSec = Date.now() / 1000;
+    const startSec = endSec - 30 * 60;
+    try {
+      metricSamples = await getClusterMetrics(
+        clusterId,
+        'kubinate_agent_heartbeat_total',
+        startSec,
+        endSec
+      );
+    } catch {
+      // Best-effort; chart shows "no data" on failure.
+      metricSamples = [];
+    } finally {
+      metricsLoading = false;
     }
   }
 
@@ -259,6 +300,7 @@
   onMount(() => {
     refresh();
     loadAvailableAddons();
+    loadMetrics(page.params.id!);
     openEventSource();
     // Separate ticker so the "elapsed" display updates every second
     // without triggering an extra fetch.
@@ -271,6 +313,26 @@
     stopPolling();
     closeEventSource();
     if (tickHandle) clearInterval(tickHandle);
+  });
+
+  const sparklinePath = $derived.by(() => {
+    if (metricSamples.length < 2) return '';
+    const W = 300;
+    const H = 60;
+    const ts = metricSamples.map((s) => s.timestamp_ms);
+    const vs = metricSamples.map((s) => s.value);
+    const tMin = Math.min(...ts);
+    const tMax = Math.max(...ts);
+    const vMin = Math.min(...vs);
+    const vMax = Math.max(...vs);
+    const tRange = tMax - tMin || 1;
+    const vRange = vMax - vMin || 1;
+    const pts = metricSamples.map((s) => {
+      const x = ((s.timestamp_ms - tMin) / tRange) * W;
+      const y = H - ((s.value - vMin) / vRange) * H;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    });
+    return `M ${pts.join(' L ')}`;
   });
 
   // Sprint 1 thin slice: 5–15 minute provisioning per ADR-0003 §Context.
@@ -303,12 +365,75 @@
     return step.replace(/_/g, ' ');
   }
 
+  async function doScale(delta: -1 | 1) {
+    if (!cluster) return;
+    scaleInFlight = true;
+    scaleError = null;
+    try {
+      await scaleWorkers(cluster.id, delta);
+      await refresh();
+    } catch (err) {
+      scaleError =
+        err instanceof ApiError
+          ? `${err.title}: ${err.detail}`
+          : err instanceof Error
+            ? err.message
+            : 'Unknown error';
+    } finally {
+      scaleInFlight = false;
+    }
+  }
+
+  async function doUninstall(addonId: string) {
+    if (!cluster) return;
+    uninstallInFlight = addonId;
+    uninstallError = null;
+    try {
+      await uninstallAddon(cluster.id, addonId);
+      await refresh();
+    } catch (err) {
+      uninstallError =
+        err instanceof ApiError
+          ? `${err.title}: ${err.detail}`
+          : err instanceof Error
+            ? err.message
+            : 'Unknown error';
+    } finally {
+      uninstallInFlight = null;
+    }
+  }
+
   async function retry() {
     // Wires to ticket 05's destroy + re-trigger ticket 03's runner.
     // Until that runner is in place this just navigates back to the
     // create form so the user can submit again.
     await goto('/app/clusters/new');
   }
+
+  async function onDestroyCluster() {
+    if (!cluster || destroyConfirmName !== cluster.name) return;
+    destroyInFlight = true;
+    destroyError = null;
+    try {
+      await destroyCluster(cluster.id);
+      await goto('/app/clusters');
+    } catch (err) {
+      destroyError =
+        err instanceof ApiError
+          ? `${err.title}: ${err.detail}`
+          : err instanceof Error
+            ? err.message
+            : 'Unknown error';
+    } finally {
+      destroyInFlight = false;
+    }
+  }
+
+  // Agent is "connected" if the last heartbeat was within 90 seconds.
+  const agentConnected = $derived.by(() => {
+    if (!cluster?.agent_last_seen_at) return false;
+    return Date.now() - new Date(cluster.agent_last_seen_at).getTime() < 90_000;
+  });
 
   function statusBadgeClass(status: string): string {
     if (status === 'ready') {
@@ -332,7 +457,7 @@
 </script>
 
 <svelte:head>
-  <title>Cluster — Kubinate</title>
+  <title>{cluster?.name ?? 'Cluster'} — Kubinate</title>
 </svelte:head>
 
 {#if error}
@@ -369,13 +494,58 @@
             <dd>{cluster.server_type}</dd>
 
             <dt class="font-medium text-muted-foreground">Workers</dt>
-            <dd>{cluster.worker_count}</dd>
+            <dd>
+              {#if cluster.status === 'ready'}
+                <div class="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onclick={() => doScale(-1)}
+                    disabled={scaleInFlight || cluster.worker_count <= 1}
+                    aria-label="Remove a worker"
+                    class="flex size-6 items-center justify-center rounded border border-input bg-background text-sm font-medium hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40"
+                    >−</button
+                  >
+                  <span class="w-4 text-center tabular-nums">{cluster.worker_count}</span>
+                  <button
+                    type="button"
+                    onclick={() => doScale(1)}
+                    disabled={scaleInFlight || cluster.worker_count >= 10}
+                    aria-label="Add a worker"
+                    class="flex size-6 items-center justify-center rounded border border-input bg-background text-sm font-medium hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40"
+                    >+</button
+                  >
+                  {#if scaleInFlight}
+                    <Loader2 class="size-3.5 animate-spin text-muted-foreground" />
+                  {/if}
+                </div>
+                {#if scaleError}
+                  <p class="mt-1 text-xs text-destructive">{scaleError}</p>
+                {/if}
+              {:else}
+                {cluster.worker_count}
+              {/if}
+            </dd>
 
             <dt class="font-medium text-muted-foreground">Created</dt>
             <dd>{new Date(cluster.created_at).toLocaleString()}</dd>
 
             <dt class="font-medium text-muted-foreground">Status</dt>
             <dd class="capitalize">{cluster.status}</dd>
+
+            {#if cluster.agent_last_seen_at}
+              <dt class="font-medium text-muted-foreground">Agent</dt>
+              <dd>
+                {#if agentConnected}
+                  <Badge class="bg-emerald-100 text-emerald-800 border-emerald-200">Connected</Badge
+                  >
+                {:else}
+                  <Badge class="bg-zinc-100 text-zinc-600 border-zinc-200">Disconnected</Badge>
+                {/if}
+                <span class="ml-2 text-xs text-muted-foreground">
+                  {new Date(cluster.agent_last_seen_at).toLocaleString()}
+                </span>
+              </dd>
+            {/if}
 
             {#if cluster.current_step}
               <dt class="font-medium text-muted-foreground">Step</dt>
@@ -392,6 +562,30 @@
           </dl>
         </CardContent>
       </Card>
+
+      <!-- Metrics chart -->
+      {#if cluster.status === 'ready'}
+        <Card>
+          <CardHeader>
+            <CardTitle>Agent heartbeats (last 30 min)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {#if metricsLoading}
+              <Skeleton class="h-16 w-full" />
+            {:else if metricSamples.length < 2}
+              <p class="text-sm text-muted-foreground">No data yet.</p>
+            {:else}
+              <svg
+                viewBox="0 0 300 60"
+                class="w-full h-16 text-primary"
+                aria-label="Agent heartbeat sparkline"
+              >
+                <path d={sparklinePath} fill="none" stroke="currentColor" stroke-width="1.5" />
+              </svg>
+            {/if}
+          </CardContent>
+        </Card>
+      {/if}
 
       <!-- Provisioning progress -->
       {#if cluster.status === 'pending' || cluster.status === 'provisioning'}
@@ -431,6 +625,24 @@
           </Button>
         </div>
       {/if}
+
+      {#if cluster.status === 'ready' || cluster.status === 'failed' || cluster.status === 'scaling'}
+        <div class="mt-4">
+          <Button
+            variant="destructive"
+            size="sm"
+            onclick={() => {
+              destroyConfirmName = '';
+              destroyError = null;
+              destroyModalOpen = true;
+            }}
+            disabled={destroyInFlight}
+            data-testid="destroy-cluster"
+          >
+            Destroy cluster
+          </Button>
+        </div>
+      {/if}
     </div>
 
     <!-- Right column -->
@@ -455,6 +667,7 @@
                   <TableHead>Add-on</TableHead>
                   <TableHead>Version</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -467,10 +680,30 @@
                         {describeAddonStatus(a)}
                       </Badge>
                     </TableCell>
+                    <TableCell>
+                      {#if a.status === 'ready' || a.status === 'failed'}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onclick={() => doUninstall(a.id)}
+                          disabled={uninstallInFlight === a.id}
+                          data-testid={`uninstall-${a.addon}`}
+                        >
+                          {#if uninstallInFlight === a.id}
+                            <Loader2 class="mr-2 h-4 w-4 animate-spin" />
+                          {/if}
+                          Uninstall
+                        </Button>
+                      {/if}
+                    </TableCell>
                   </TableRow>
                 {/each}
               </TableBody>
             </Table>
+          {/if}
+
+          {#if uninstallError}
+            <p class="text-xs text-destructive mt-2">{uninstallError}</p>
           {/if}
 
           {#if cluster.status === 'ready' && installableSlugs.length > 0}
@@ -536,6 +769,59 @@
           Installing…
         {:else}
           Install
+        {/if}
+      </Button>
+    </DialogFooter>
+  </DialogContent>
+</Dialog>
+
+<Dialog bind:open={destroyModalOpen}>
+  <DialogContent data-testid="destroy-modal">
+    <DialogHeader>
+      <DialogTitle>Destroy cluster</DialogTitle>
+      <DialogDescription>
+        This action is irreversible. All cluster data will be deleted from Hetzner. Type <strong
+          >{cluster?.name}</strong
+        > to confirm.
+      </DialogDescription>
+    </DialogHeader>
+
+    <div class="space-y-3 py-2">
+      <Input
+        type="text"
+        bind:value={destroyConfirmName}
+        placeholder={cluster?.name ?? ''}
+        data-testid="destroy-confirm-name"
+      />
+      {#if destroyError}
+        <div
+          role="alert"
+          class="rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive"
+        >
+          {destroyError}
+        </div>
+      {/if}
+    </div>
+
+    <DialogFooter>
+      <Button
+        variant="outline"
+        onclick={() => (destroyModalOpen = false)}
+        disabled={destroyInFlight}
+      >
+        Cancel
+      </Button>
+      <Button
+        variant="destructive"
+        onclick={onDestroyCluster}
+        disabled={destroyInFlight || destroyConfirmName !== (cluster?.name ?? '')}
+        data-testid="destroy-confirm"
+      >
+        {#if destroyInFlight}
+          <Loader2 class="mr-2 h-4 w-4 animate-spin" />
+          Destroying…
+        {:else}
+          Destroy
         {/if}
       </Button>
     </DialogFooter>

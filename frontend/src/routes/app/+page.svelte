@@ -4,6 +4,7 @@
   import { Card, CardHeader, CardTitle, CardContent } from '$lib/components/ui/card';
   import { Badge } from '$lib/components/ui/badge';
   import { Plus, Server } from 'lucide-svelte';
+  import { SvelteMap } from 'svelte/reactivity';
 
   let { data }: { data: PageData } = $props();
 
@@ -11,7 +12,12 @@
 
   function badgeVariant(status: ClusterView['status']): 'default' | 'secondary' | undefined {
     if (status === 'ready') return 'default';
-    if (status === 'pending' || status === 'provisioning' || status === 'destroying')
+    if (
+      status === 'pending' ||
+      status === 'provisioning' ||
+      status === 'destroying' ||
+      status === 'scaling'
+    )
       return 'secondary';
     return undefined;
   }
@@ -27,6 +33,35 @@
       day: 'numeric'
     });
   }
+
+  function isAgentConnected(cluster: ClusterView): boolean {
+    if (!cluster.agent_last_seen_at) return false;
+    return Date.now() - new Date(cluster.agent_last_seen_at).getTime() < 90_000;
+  }
+
+  const activeClusters = $derived(clusters.filter((c) => c.status !== 'destroyed'));
+
+  const totalWorkers = $derived.by(() =>
+    activeClusters.reduce((sum, c) => sum + (c.worker_count ?? 0), 0)
+  );
+
+  const agentsOnline = $derived.by(
+    () =>
+      activeClusters.filter(
+        (c) => (c.status === 'ready' || c.status === 'scaling') && isAgentConnected(c)
+      ).length
+  );
+
+  const statusBreakdown = $derived.by(() => {
+    const counts = new SvelteMap<string, number>();
+    for (const c of activeClusters) {
+      counts.set(c.status, (counts.get(c.status) ?? 0) + 1);
+    }
+    return [...counts.entries()]
+      .filter(([, n]) => n > 0)
+      .map(([s, n]) => `${n} ${s}`)
+      .join(' · ');
+  });
 </script>
 
 <div class="flex flex-col gap-6 p-6">
@@ -63,6 +98,25 @@
       </div>
     </div>
   {:else}
+    <div class="grid grid-cols-2 gap-3 sm:grid-cols-4 mb-6">
+      <div class="rounded-lg border border-border bg-card px-4 py-3">
+        <p class="text-xs text-muted-foreground">Total clusters</p>
+        <p class="text-xl font-semibold">{activeClusters.length}</p>
+      </div>
+      <div class="rounded-lg border border-border bg-card px-4 py-3">
+        <p class="text-xs text-muted-foreground">Total workers</p>
+        <p class="text-xl font-semibold">{totalWorkers}</p>
+      </div>
+      <div class="rounded-lg border border-border bg-card px-4 py-3">
+        <p class="text-xs text-muted-foreground">Agents online</p>
+        <p class="text-xl font-semibold">{agentsOnline}</p>
+      </div>
+      <div class="rounded-lg border border-border bg-card px-4 py-3">
+        <p class="text-xs text-muted-foreground">Status</p>
+        <p class="text-xl font-semibold truncate" title={statusBreakdown}>{statusBreakdown}</p>
+      </div>
+    </div>
+
     <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {#each clusters as cluster (cluster.id)}
         <a href="/app/clusters/{cluster.id}" class="group block outline-none">
@@ -90,6 +144,19 @@
                 <dt class="font-medium text-foreground">Workers</dt>
                 <dd>{cluster.worker_count}</dd>
               </dl>
+              {#if cluster.status === 'ready' || cluster.status === 'scaling'}
+                {#if isAgentConnected(cluster)}
+                  <span class="flex items-center gap-1.5 text-xs font-medium">
+                    <span class="size-1.5 rounded-full bg-green-500"></span>
+                    <span class="text-green-700 dark:text-green-400">Agent connected</span>
+                  </span>
+                {:else}
+                  <span class="flex items-center gap-1.5 text-xs font-medium">
+                    <span class="size-1.5 rounded-full bg-red-500"></span>
+                    <span class="text-red-600 dark:text-red-400">Agent offline</span>
+                  </span>
+                {/if}
+              {/if}
               <p class="text-xs text-muted-foreground">
                 Created {formatDate(cluster.created_at)}
               </p>

@@ -23,10 +23,13 @@ use kubinate_agent_proto::{
     AgentPayload, AgentService, AgentServiceServer, AgentToServer, HeartbeatAck, ServerPayload,
     ServerToAgent,
 };
-use std::pin::Pin;
+use kubinate_cluster::repository::ClusterRepository;
+use kubinate_observability::metrics::MetricsStore;
+use std::{pin::Pin, sync::Arc};
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::{transport::Server, Request, Response, Status, Streaming};
+use uuid::Uuid;
 
 /// Default bind address for the agent gRPC listener. Binds on all
 /// interfaces so Cloudflare Tunnel can reach it; mTLS (Sprint 5)
@@ -34,16 +37,27 @@ use tonic::{transport::Server, Request, Response, Status, Streaming};
 /// Override with `KUBINATE__AGENT_TUNNEL_ADDR`.
 const DEFAULT_AGENT_BIND_ADDR: &str = "0.0.0.0:8082";
 
-/// Production-shaped agent service. The Sprint 4 partial-scope
-/// shipping shape: heartbeats round-trip; metrics and assertion
-/// payloads are accepted but logged-only (the storage paths land
-/// in Sprint 5+ alongside the real agent deploy).
-#[derive(Default, Clone)]
+/// Production-shaped agent service. Heartbeats round-trip and update
+/// `clusters.agent_last_seen_at`. `MetricsRemoteWrite` payloads are
+/// forwarded to the configured `MetricsStore` after the claimed
+/// `organization_id` is cross-checked against the cluster's DB row.
+/// Assertion payloads are accepted but not yet acted on (Phase 3+).
+#[derive(Clone)]
 pub struct ApiAgentService {
-    // No state today. Sprint 5+ adds:
-    // - a handle to the observability proxy (for metrics fan-out),
-    // - a session-revocation channel (for the assertion forward path),
-    // - a registry of connected agents (for command dispatch).
+    cluster_repo: Arc<dyn ClusterRepository>,
+    metrics_store: Arc<dyn MetricsStore>,
+}
+
+impl ApiAgentService {
+    pub fn new(
+        cluster_repo: Arc<dyn ClusterRepository>,
+        metrics_store: Arc<dyn MetricsStore>,
+    ) -> Self {
+        Self {
+            cluster_repo,
+            metrics_store,
+        }
+    }
 }
 
 #[async_trait]
@@ -51,17 +65,21 @@ impl AgentService for ApiAgentService {
     type OpenStreamStream =
         Pin<Box<dyn futures::Stream<Item = Result<ServerToAgent, Status>> + Send + 'static>>;
 
+    #[allow(clippy::too_many_lines)]
     async fn open_stream(
         &self,
         request: Request<Streaming<AgentToServer>>,
     ) -> Result<Response<Self::OpenStreamStream>, Status> {
         let mut inbound = request.into_inner();
         let (tx, rx) = mpsc::channel::<Result<ServerToAgent, Status>>(16);
+        let cluster_repo = self.cluster_repo.clone();
+        let metrics_store = self.metrics_store.clone();
 
         tokio::spawn(async move {
-            // Track the cluster identity for the structured disconnect
-            // event. Populated on the first heartbeat.
+            // Both fields are populated on the first heartbeat and used
+            // for org-id cross-checks on subsequent Metrics payloads.
             let mut cluster_id: Option<String> = None;
+            let mut cluster_org_id: Option<Uuid> = None;
             let mut agent_version: Option<String> = None;
 
             while let Some(message) = inbound.next().await {
@@ -74,6 +92,31 @@ impl AgentService for ApiAgentService {
                         cluster_id = Some(heartbeat.cluster_id.clone());
                         agent_version = Some(heartbeat.agent_version.clone());
                         let received_at_ms = wall_clock_ms();
+
+                        if let Ok(cluster_uuid) = heartbeat.cluster_id.parse::<Uuid>() {
+                            match cluster_repo
+                                .touch_agent_heartbeat(cluster_uuid, &heartbeat.agent_version)
+                                .await
+                            {
+                                Ok(Some(org_id)) => {
+                                    cluster_org_id = Some(org_id);
+                                }
+                                Ok(None) => {
+                                    tracing::warn!(
+                                        cluster_id = %heartbeat.cluster_id,
+                                        "agent heartbeat: cluster not found in DB"
+                                    );
+                                }
+                                Err(e) => {
+                                    tracing::warn!(
+                                        error = %e,
+                                        cluster_id = %heartbeat.cluster_id,
+                                        "agent heartbeat: touch failed"
+                                    );
+                                }
+                            }
+                        }
+
                         tracing::debug!(
                             cluster_id = %heartbeat.cluster_id,
                             agent_version = %heartbeat.agent_version,
@@ -88,9 +131,42 @@ impl AgentService for ApiAgentService {
                             break;
                         }
                     }
-                    AgentPayload::Metrics(_) => {
-                        tracing::debug!("agent metrics_remote_write received");
-                    }
+                    AgentPayload::Metrics(m) => match m.organization_id.parse::<Uuid>() {
+                        Ok(org_id) => {
+                            // Cross-check: the claimed org must match what the DB
+                            // recorded for this cluster. If we haven't resolved it yet,
+                            // skip rather than blindly forwarding.
+                            if let Some(resolved_org) = cluster_org_id {
+                                if resolved_org != org_id {
+                                    tracing::warn!(
+                                        claimed_org = %org_id,
+                                        cluster_org = %resolved_org,
+                                        "agent metrics: org_id mismatch, dropping"
+                                    );
+                                } else if let Err(e) =
+                                    metrics_store.forward_write(org_id, m.write_request).await
+                                {
+                                    tracing::warn!(
+                                        error = %e,
+                                        org = %org_id,
+                                        "agent metrics forward failed"
+                                    );
+                                } else {
+                                    tracing::debug!(org = %org_id, "agent metrics forwarded");
+                                }
+                            } else {
+                                tracing::debug!(
+                                    "agent metrics: cluster org not yet resolved, skipping"
+                                );
+                            }
+                        }
+                        Err(_) => {
+                            tracing::warn!(
+                                bad_org = %m.organization_id,
+                                "agent metrics: invalid organization_id, dropping"
+                            );
+                        }
+                    },
                     AgentPayload::Assertion(_) => {
                         tracing::debug!("agent assertion forward received");
                     }
@@ -167,7 +243,10 @@ pub fn decide_listener(enabled: Option<&str>, addr_override: Option<&str>) -> Li
 /// Spawns the server on a fresh tokio task and returns immediately;
 /// errors during binding are logged but do not abort startup. The
 /// rest of the API serves regardless.
-pub fn spawn_if_enabled() {
+pub fn spawn_if_enabled(
+    cluster_repo: Arc<dyn ClusterRepository>,
+    metrics_store: Arc<dyn MetricsStore>,
+) {
     let enabled_owned = std::env::var("KUBINATE__AGENT_TUNNEL_ENABLED").ok();
     let addr_owned = std::env::var("KUBINATE__AGENT_TUNNEL_ADDR").ok();
     let addr = match decide_listener(enabled_owned.as_deref(), addr_owned.as_deref()) {
@@ -188,7 +267,10 @@ pub fn spawn_if_enabled() {
     tokio::spawn(async move {
         tracing::info!(%addr, "agent tunnel gRPC listener starting (mTLS enabled)");
         if let Err(e) = Server::builder()
-            .add_service(AgentServiceServer::new(ApiAgentService::default()))
+            .add_service(AgentServiceServer::new(ApiAgentService::new(
+                cluster_repo,
+                metrics_store,
+            )))
             .serve(addr)
             .await
         {
@@ -211,10 +293,118 @@ mod tests {
     //! Sprint 4 partial scope explicitly defers mTLS to Sprint 5+.
 
     use super::*;
+    use async_trait::async_trait;
     use kubinate_agent_proto::{AgentPayload, AgentServiceClient, AgentToServer, Heartbeat};
+    use kubinate_cluster::{
+        model::{Cluster, ClusterNodeRole, ClusterServer, ClusterStatus, NewCluster},
+        repository::ClusterRepository,
+    };
+    use kubinate_observability::metrics::InMemoryMetricsStore;
+    use kubinate_platform::{audit::AuditContext, error::PlatformError};
     use tokio::sync::mpsc;
     use tokio_stream::wrappers::ReceiverStream;
     use tonic::transport::{Endpoint, Server, Uri};
+
+    /// No-op cluster repository stub for tests that don't hit a real DB.
+    struct NullClusterRepo;
+
+    #[async_trait]
+    impl ClusterRepository for NullClusterRepo {
+        async fn insert(
+            &self,
+            _: Uuid,
+            _: NewCluster,
+            _: &AuditContext,
+        ) -> Result<Cluster, PlatformError> {
+            unimplemented!()
+        }
+        async fn get(&self, _: Uuid, _: Uuid) -> Result<Cluster, PlatformError> {
+            unimplemented!()
+        }
+        async fn list(&self, _: Uuid) -> Result<Vec<Cluster>, PlatformError> {
+            unimplemented!()
+        }
+        async fn set_kubeconfig_secret(
+            &self,
+            _: Uuid,
+            _: Uuid,
+            _: Uuid,
+            _: &AuditContext,
+        ) -> Result<(), PlatformError> {
+            unimplemented!()
+        }
+        async fn kubeconfig_secret(&self, _: Uuid, _: Uuid) -> Result<Option<Uuid>, PlatformError> {
+            unimplemented!()
+        }
+        async fn update_status(
+            &self,
+            _: Uuid,
+            _: Uuid,
+            _: ClusterStatus,
+            _: Option<&str>,
+            _: &AuditContext,
+        ) -> Result<(), PlatformError> {
+            unimplemented!()
+        }
+        async fn update_worker_count(
+            &self,
+            _: Uuid,
+            _: Uuid,
+            _: i16,
+            _: &AuditContext,
+        ) -> Result<(), PlatformError> {
+            unimplemented!()
+        }
+        async fn touch_agent_heartbeat(
+            &self,
+            _: Uuid,
+            _: &str,
+        ) -> Result<Option<Uuid>, PlatformError> {
+            Ok(None)
+        }
+        async fn soft_delete(
+            &self,
+            _: Uuid,
+            _: Uuid,
+            _: &AuditContext,
+        ) -> Result<(), PlatformError> {
+            unimplemented!()
+        }
+        async fn record_server(
+            &self,
+            _: Uuid,
+            _: Uuid,
+            _: i64,
+            _: ClusterNodeRole,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: &AuditContext,
+        ) -> Result<(), PlatformError> {
+            unimplemented!()
+        }
+        async fn list_servers(
+            &self,
+            _: Uuid,
+            _: Uuid,
+        ) -> Result<Vec<ClusterServer>, PlatformError> {
+            unimplemented!()
+        }
+        async fn soft_delete_servers(
+            &self,
+            _: Uuid,
+            _: Uuid,
+            _: &AuditContext,
+        ) -> Result<(), PlatformError> {
+            unimplemented!()
+        }
+    }
+
+    fn stub_service() -> ApiAgentService {
+        ApiAgentService::new(
+            Arc::new(NullClusterRepo),
+            Arc::new(InMemoryMetricsStore::new()),
+        )
+    }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn heartbeat_round_trips_through_api_agent_service() {
@@ -222,7 +412,7 @@ mod tests {
 
         tokio::spawn(async move {
             Server::builder()
-                .add_service(AgentServiceServer::new(ApiAgentService::default()))
+                .add_service(AgentServiceServer::new(stub_service()))
                 .serve_with_incoming(tokio_stream::once(Ok::<_, std::io::Error>(server_io)))
                 .await
                 .expect("server crashed");

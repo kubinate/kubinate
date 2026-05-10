@@ -1,9 +1,11 @@
 import { z } from 'zod';
 import {
+  acceptInviteResponseSchema,
   createInviteResponseSchema,
   inviteViewSchema,
   membershipViewSchema,
   problemDetailsSchema,
+  type AcceptInviteResponse,
   type CreateInviteResponse,
   type InviteView,
   type MembershipRole,
@@ -115,4 +117,16 @@ export async function removeMember(
     method: 'DELETE'
   });
   return parseResponse(response, null);
+}
+
+export async function acceptInvite(
+  token: string,
+  fetchImpl: typeof fetch = fetch
+): Promise<AcceptInviteResponse> {
+  const response = await fetchImpl('/api/v1/invites/accept', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ token })
+  });
+  return parseResponse(response, acceptInviteResponseSchema);
 }

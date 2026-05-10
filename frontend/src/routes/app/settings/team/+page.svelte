@@ -12,6 +12,7 @@
   } from '$lib/api/team';
   import { getMe } from '$lib/api/me';
   import { goto } from '$app/navigation';
+  import { page } from '$app/state';
   import type { InviteView, MembershipRole, MembershipView } from '$lib/api/schemas';
   import { Button } from '$lib/components/ui/button';
   import { Badge } from '$lib/components/ui/badge';
@@ -52,6 +53,12 @@
   // Tracks per-row "in flight" so a slow PATCH can disable that row's
   // controls without freezing the whole page.
   const busy = new SvelteSet<string>();
+
+  const inviteUrl = $derived(
+    lastIssuedToken
+      ? `${page.url.origin}/accept?token=${encodeURIComponent(lastIssuedToken)}`
+      : null
+  );
 
   function setBusy(key: string, value: boolean) {
     if (value) busy.add(key);
@@ -318,7 +325,7 @@
       </div>
     {/if}
 
-    {#if lastIssuedToken}
+    {#if inviteUrl}
       <div
         class="rounded-md border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/40 p-4"
         role="alert"
@@ -329,8 +336,9 @@
         </p>
         <code
           class="block rounded border border-amber-200 dark:border-amber-800 bg-white dark:bg-zinc-900 px-3 py-2 font-mono text-sm break-all select-all text-zinc-900 dark:text-zinc-100"
+          data-testid="invite-url"
         >
-          {lastIssuedToken}
+          {inviteUrl}
         </code>
       </div>
     {/if}

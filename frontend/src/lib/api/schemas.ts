@@ -56,14 +56,24 @@ export const clusterViewSchema = z.object({
   server_type: z.string(),
   control_plane_count: z.number(),
   worker_count: z.number(),
-  status: z.enum(['pending', 'provisioning', 'ready', 'failed', 'destroying', 'destroyed']),
+  status: z.enum([
+    'pending',
+    'provisioning',
+    'ready',
+    'scaling',
+    'failed',
+    'destroying',
+    'destroyed'
+  ]),
   current_step: z.string().nullable().optional(),
   started_at: z.string(),
   error_category: errorCategorySchema.nullable().optional(),
   terminal: z.boolean(),
   kubeconfig_available: z.boolean(),
   created_at: z.string(),
-  updated_at: z.string()
+  updated_at: z.string(),
+  agent_last_seen_at: z.string().nullable().optional(),
+  agent_version: z.string().optional()
 });
 
 export type ClusterView = z.infer<typeof clusterViewSchema>;
@@ -164,6 +174,12 @@ export const credentialListSchema = z.array(credentialViewSchema);
 export const membershipRoleSchema = z.enum(['owner', 'admin', 'developer', 'viewer']);
 export type MembershipRole = z.infer<typeof membershipRoleSchema>;
 
+export const acceptInviteResponseSchema = z.object({
+  organization_id: z.string().uuid(),
+  role: membershipRoleSchema
+});
+export type AcceptInviteResponse = z.infer<typeof acceptInviteResponseSchema>;
+
 export const membershipViewSchema = z.object({
   id: z.string().uuid(),
   user_id: z.string().uuid(),
@@ -214,7 +230,9 @@ export const meViewSchema = z.object({
   user_id: z.string().uuid(),
   session_id: z.string().uuid(),
   organization_id: z.string().uuid(),
-  mfa_state: mfaStateSchema
+  mfa_state: mfaStateSchema,
+  email: z.string(),
+  display_name: z.string()
 });
 export type MeView = z.infer<typeof meViewSchema>;
 
@@ -300,3 +318,55 @@ export const recoveryRedeemResponseSchema = z.object({
   remaining: z.number()
 });
 export type RecoveryRedeemResponse = z.infer<typeof recoveryRedeemResponseSchema>;
+
+// -----------------------------------------------------------------------------
+// API keys (Sprint 12)
+// -----------------------------------------------------------------------------
+
+export const apiKeyViewSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string(),
+  token_prefix: z.string(),
+  created_at: z.string(),
+  last_used_at: z.string().nullable().optional()
+});
+export type ApiKeyView = z.infer<typeof apiKeyViewSchema>;
+
+export const createApiKeyResponseSchema = z.object({
+  view: apiKeyViewSchema,
+  /** Plaintext token — shown once, not retrievable again. */
+  token: z.string()
+});
+export type CreateApiKeyResponse = z.infer<typeof createApiKeyResponseSchema>;
+
+// -----------------------------------------------------------------------------
+// Organization (Sprint 14)
+// -----------------------------------------------------------------------------
+
+export const orgViewSchema = z.object({
+  id: z.string().uuid(),
+  slug: z.string(),
+  display_name: z.string(),
+  created_at: z.string(),
+  updated_at: z.string()
+});
+export type OrgView = z.infer<typeof orgViewSchema>;
+
+// -----------------------------------------------------------------------------
+// Audit log (Sprint 10)
+// -----------------------------------------------------------------------------
+
+export const auditLogEntrySchema = z.object({
+  id: z.string().uuid(),
+  action: z.string(),
+  resource_type: z.string(),
+  resource_id: z.string().nullable().optional(),
+  decision: z.string(),
+  reason: z.string().nullable().optional(),
+  actor_user_id: z.string().uuid().nullable().optional(),
+  actor_email: z.string().nullable().optional(),
+  actor_display_name: z.string().nullable().optional(),
+  request_id: z.string().nullable().optional(),
+  created_at: z.string()
+});
+export type AuditLogEntry = z.infer<typeof auditLogEntrySchema>;

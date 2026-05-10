@@ -40,6 +40,13 @@ pub trait AddonRepository: Send + Sync {
         reason: Option<&str>,
         audit: &AuditContext,
     ) -> Result<(), PlatformError>;
+
+    /// Fetch a single addon by id within the tenant scope.
+    async fn get_by_id(
+        &self,
+        organization_id: Uuid,
+        id: Uuid,
+    ) -> Result<Option<ClusterAddon>, PlatformError>;
 }
 
 /// Postgres-backed implementation.
@@ -156,6 +163,29 @@ impl AddonRepository for PgAddonRepository {
             .await?;
         tx.commit().await?;
         Ok(())
+    }
+
+    async fn get_by_id(
+        &self,
+        organization_id: Uuid,
+        id: Uuid,
+    ) -> Result<Option<ClusterAddon>, PlatformError> {
+        let mut tx = self.pool.begin().await?;
+        set_tenant(&mut tx, organization_id).await?;
+        let row = sqlx::query(
+            r"
+            SELECT id, organization_id, cluster_id, addon, version, helm_release,
+                   status, status_reason, created_at, updated_at, version_lock
+            FROM cluster_addons
+            WHERE id = $1 AND deleted_at IS NULL
+            LIMIT 1
+            ",
+        )
+        .bind(id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(row.map(row_to_addon))
     }
 }
 

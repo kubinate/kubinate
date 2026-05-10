@@ -14,7 +14,9 @@
 
 mod actor;
 mod agent;
+mod api_keys;
 mod audit_ctx;
+mod audit_log;
 mod auth;
 mod auth_passkey;
 mod billing;
@@ -50,6 +52,7 @@ use kubinate_integrations::{
 use kubinate_platform::{
     config::AppConfig,
     db,
+    error::PlatformError,
     secrets::{PgcryptoStore, SecretStore},
     telemetry,
 };
@@ -376,10 +379,12 @@ async fn main() -> anyhow::Result<()> {
         .nest("/v1/integrations/hetzner", integrations::routes())
         .nest("/v1/organizations/{org_id}", team::org_routes())
         .nest("/v1/organizations/{org_id}", billing::org_state_route())
+        .nest("/v1/organizations/{org_id}", audit_log::routes())
         .nest("/v1/invites", team::invite_accept_route())
         .nest("/v1/billing", billing::routes())
+        .nest("/v1/api-keys", api_keys::routes())
         .nest("/v1/observability", observability::routes())
-        .with_state(state)
+        .with_state(state.clone())
         .layer(SetRequestIdLayer::new(
             request_id_header.clone(),
             MakeRequestUuid,
@@ -396,12 +401,7 @@ async fn main() -> anyhow::Result<()> {
         .await
         .with_context(|| format!("bind {addr}"))?;
 
-    // Sprint 4 ticket 03 — gated agent gRPC listener on a separate
-    // port. Defaults to off; an operator flips
-    // `KUBINATE__AGENT_TUNNEL_ENABLED=1` only after they've stood up
-    // the mTLS PKI Sprint 5+ ships. Failing to start does not abort
-    // the API.
-    agent::spawn_if_enabled();
+    agent::spawn_if_enabled(state.cluster_repo.clone(), state.metrics_store.clone());
 
     tracing::info!(%addr, "listening");
     axum::serve(listener, app)
@@ -462,11 +462,22 @@ struct Version {
 async fn me(State(state): State<AppState>, actor: actor::Actor) -> Result<Json<MeView>, ApiError> {
     let mfa_state =
         kubinate_identity::session::mfa_state(&state.db, actor.user_id, actor.session_id).await?;
+    let row: Option<(String, String)> =
+        sqlx::query_as("SELECT email::text, display_name FROM users WHERE id = $1")
+            .bind(actor.user_id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(PlatformError::from)?;
+    let (email, display_name) = row
+        .ok_or_else(|| PlatformError::NotFound(format!("user/{}", actor.user_id)))
+        .map_err(ApiError::from)?;
     Ok(Json(MeView {
         user_id: actor.user_id,
         session_id: actor.session_id,
         organization_id: actor.organization_id,
         mfa_state,
+        email,
+        display_name,
     }))
 }
 
@@ -476,6 +487,8 @@ struct MeView {
     session_id: uuid::Uuid,
     organization_id: uuid::Uuid,
     mfa_state: kubinate_identity::session::MfaState,
+    email: String,
+    display_name: String,
 }
 
 async fn version() -> Json<Version> {
