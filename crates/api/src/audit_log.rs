@@ -49,12 +49,10 @@ async fn list_audit_log(
     }
 
     let mut tx = state.db.begin().await.map_err(PlatformError::from)?;
-    sqlx::query(&format!(
-        "SET LOCAL app.current_tenant_id = '{org_id}'"
-    ))
-    .execute(&mut *tx)
-    .await
-    .map_err(PlatformError::from)?;
+    sqlx::query(&format!("SET LOCAL app.current_tenant_id = '{org_id}'"))
+        .execute(&mut *tx)
+        .await
+        .map_err(PlatformError::from)?;
 
     let rows = sqlx::query_as::<_, AuditLogRow>(
         "SELECT

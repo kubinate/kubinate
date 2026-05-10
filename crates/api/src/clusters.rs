@@ -18,12 +18,12 @@ use axum::{
     Json, Router,
 };
 use futures::stream::{self, Stream};
+use kubinate_addons::model::AddonStatus;
 use kubinate_cluster::{
     model::{Cluster, NewCluster},
     service::{ALLOWED_REGIONS, ALLOWED_SERVER_TYPES},
     status::{error_category, ErrorCategory},
 };
-use kubinate_addons::model::AddonStatus;
 use kubinate_integrations::hetzner::Client as HetznerClient;
 use kubinate_platform::{audit, error::PlatformError};
 use kubinate_workflows::events::ClusterEvent;
@@ -847,9 +847,7 @@ async fn uninstall_addon(
         .addon_service
         .get_by_id(actor.organization_id, addon_id)
         .await?
-        .ok_or_else(|| {
-            ApiError::from(PlatformError::NotFound(format!("addon/{addon_id}")))
-        })?;
+        .ok_or_else(|| ApiError::from(PlatformError::NotFound(format!("addon/{addon_id}"))))?;
 
     if addon.cluster_id != cluster_id {
         return Err(ApiError::from(PlatformError::NotFound(format!(
@@ -883,8 +881,7 @@ async fn uninstall_addon(
         .cluster_service
         .fetch_kubeconfig(actor.organization_id, cluster_id)
         .await?;
-    let kubeconfig_path =
-        std::env::temp_dir().join(format!("kubinate-kc-{}.yaml", Uuid::now_v7()));
+    let kubeconfig_path = std::env::temp_dir().join(format!("kubinate-kc-{}.yaml", Uuid::now_v7()));
     if let Err(err) = tokio::fs::write(&kubeconfig_path, kubeconfig.expose_secret()).await {
         return Err(ApiError::from(PlatformError::Internal(anyhow::anyhow!(
             "stage kubeconfig: {err}"
@@ -893,11 +890,9 @@ async fn uninstall_addon(
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let _ = tokio::fs::set_permissions(
-            &kubeconfig_path,
-            std::fs::Permissions::from_mode(0o600),
-        )
-        .await;
+        let _ =
+            tokio::fs::set_permissions(&kubeconfig_path, std::fs::Permissions::from_mode(0o600))
+                .await;
     }
 
     state.runner.spawn_uninstall_addon(
