@@ -56,7 +56,15 @@ export const clusterViewSchema = z.object({
   server_type: z.string(),
   control_plane_count: z.number(),
   worker_count: z.number(),
-  status: z.enum(['pending', 'provisioning', 'ready', 'scaling', 'failed', 'destroying', 'destroyed']),
+  status: z.enum([
+    'pending',
+    'provisioning',
+    'ready',
+    'scaling',
+    'failed',
+    'destroying',
+    'destroyed'
+  ]),
   current_step: z.string().nullable().optional(),
   started_at: z.string(),
   error_category: errorCategorySchema.nullable().optional(),
@@ -165,6 +173,12 @@ export const credentialListSchema = z.array(credentialViewSchema);
 
 export const membershipRoleSchema = z.enum(['owner', 'admin', 'developer', 'viewer']);
 export type MembershipRole = z.infer<typeof membershipRoleSchema>;
+
+export const acceptInviteResponseSchema = z.object({
+  organization_id: z.string().uuid(),
+  role: membershipRoleSchema
+});
+export type AcceptInviteResponse = z.infer<typeof acceptInviteResponseSchema>;
 
 export const membershipViewSchema = z.object({
   id: z.string().uuid(),
