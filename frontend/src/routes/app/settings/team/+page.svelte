@@ -151,6 +151,27 @@
     }
   }
 
+  async function onResendInvite(invite: InviteView) {
+    if (!organizationId) return;
+    setBusy(`invite-${invite.id}`, true);
+    try {
+      if (inviteStatus(invite) === 'pending') {
+        await revokeInvite(organizationId, invite.id);
+      }
+      const result = await createInvite(organizationId, invite.email, invite.role);
+      lastIssuedToken = result.token;
+      await refresh();
+    } catch (err) {
+      if (err instanceof ApiError && err.isMfaRequired()) {
+        await goto('/app/settings/security?mfa=required');
+        return;
+      }
+      loadError = describe(err);
+    } finally {
+      setBusy(`invite-${invite.id}`, false);
+    }
+  }
+
   async function onRevokeInvite(invite: InviteView) {
     if (!organizationId) return;
     setBusy(`invite-${invite.id}`, true);
@@ -219,6 +240,7 @@
             <TableHead>Member</TableHead>
             <TableHead>Role</TableHead>
             <TableHead>Joined</TableHead>
+            <TableHead>Last active</TableHead>
             <TableHead class="w-45">Actions</TableHead>
           </TableRow>
         </TableHeader>
@@ -238,6 +260,9 @@
               </TableCell>
               <TableCell class="text-sm text-muted-foreground">
                 {new Date(member.joined_at).toLocaleDateString()}
+              </TableCell>
+              <TableCell class="text-sm text-muted-foreground">
+                {member.last_active_at ? new Date(member.last_active_at).toLocaleDateString() : '—'}
               </TableCell>
               <TableCell>
                 <div class="flex items-center gap-2">
@@ -352,6 +377,7 @@
             <TableRow>
               <TableHead>Email</TableHead>
               <TableHead>Role</TableHead>
+              <TableHead>Status</TableHead>
               <TableHead>Expires</TableHead>
               <TableHead class="w-25">Actions</TableHead>
             </TableRow>
@@ -363,25 +389,52 @@
                 <TableCell>
                   <Badge variant={roleBadgeVariant(invite.role)}>{invite.role}</Badge>
                 </TableCell>
+                <TableCell>
+                  {@const status = inviteStatus(invite)}
+                  <Badge
+                    class={status === 'pending'
+                      ? 'bg-blue-100 text-blue-800 border-blue-200 text-xs'
+                      : status === 'expired'
+                        ? 'bg-amber-100 text-amber-800 border-amber-200 text-xs'
+                        : status === 'accepted'
+                          ? 'bg-emerald-100 text-emerald-800 border-emerald-200 text-xs'
+                          : 'text-xs'}
+                    variant={status === 'revoked' ? 'outline' : undefined}
+                  >
+                    {status}
+                  </Badge>
+                </TableCell>
                 <TableCell class="text-sm text-muted-foreground">
                   {new Date(invite.expires_at).toLocaleString()}
                 </TableCell>
                 <TableCell>
-                  {#if inviteStatus(invite) === 'pending'}
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onclick={() => onRevokeInvite(invite)}
-                      disabled={busy.has(`invite-${invite.id}`)}
-                      data-testid={`revoke-${invite.id}`}
-                    >
-                      Revoke
-                    </Button>
-                  {:else}
-                    <span class="text-xs text-muted-foreground capitalize"
-                      >{inviteStatus(invite)}</span
-                    >
-                  {/if}
+                  <div class="flex items-center gap-2">
+                    {#if inviteStatus(invite) === 'pending' || inviteStatus(invite) === 'expired'}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onclick={() => onResendInvite(invite)}
+                        disabled={busy.has(`invite-${invite.id}`)}
+                      >
+                        Resend
+                      </Button>
+                    {/if}
+                    {#if inviteStatus(invite) === 'pending'}
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onclick={() => onRevokeInvite(invite)}
+                        disabled={busy.has(`invite-${invite.id}`)}
+                        data-testid={`revoke-${invite.id}`}
+                      >
+                        Revoke
+                      </Button>
+                    {:else if inviteStatus(invite) !== 'expired'}
+                      <span class="text-xs text-muted-foreground capitalize"
+                        >{inviteStatus(invite)}</span
+                      >
+                    {/if}
+                  </div>
                 </TableCell>
               </TableRow>
             {/each}
