@@ -14,6 +14,7 @@ use axum::{
     http::{request::Parts, StatusCode},
     response::{IntoResponse, Response},
 };
+use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::AppState;
@@ -63,10 +64,23 @@ where
                 });
             }
             // Cookie present but session missing / expired → fall through
-            // so the dev header path can still fire if enabled.
+            // so the bearer / dev header paths can still fire if enabled.
         }
 
-        // 2. Dev header fallback.
+        // 2. Try Authorization: Bearer kpat_... (API key authentication).
+        if let Some(token) = extract_bearer_token(parts) {
+            if token.starts_with("kpat_") {
+                match resolve_api_key(&app_state, &token).await {
+                    Ok(Some(actor)) => return Ok(actor),
+                    Ok(None) => {
+                        return Err(reject(StatusCode::UNAUTHORIZED, "invalid or revoked API key"))
+                    }
+                    Err(resp) => return Err(resp),
+                }
+            }
+        }
+
+        // 3. Dev header fallback.
         if std::env::var("KUBINATE__ALLOW_HEADER_ACTOR")
             .ok()
             .as_deref()
@@ -98,6 +112,78 @@ where
 
         Err(reject(StatusCode::UNAUTHORIZED, "authentication required"))
     }
+}
+
+fn extract_bearer_token(parts: &Parts) -> Option<String> {
+    let val = parts
+        .headers
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())?;
+    val.strip_prefix("Bearer ").map(str::to_owned)
+}
+
+async fn resolve_api_key(state: &AppState, token: &str) -> Result<Option<Actor>, Response> {
+    let hash: Vec<u8> = Sha256::digest(token.as_bytes()).to_vec();
+
+    let mut tx = state.db.begin().await.map_err(|_| {
+        reject(StatusCode::INTERNAL_SERVER_ERROR, "api key auth: db begin failed")
+    })?;
+
+    // Activate the cross-tenant bypass policy so we can find the key by
+    // hash before knowing which tenant it belongs to.
+    sqlx::query("SET LOCAL app.api_key_auth_bypass = 'on'")
+        .execute(&mut *tx)
+        .await
+        .map_err(|_| {
+            reject(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "api key auth: bypass set failed",
+            )
+        })?;
+
+    let row: Option<(Uuid, Uuid, Uuid)> = sqlx::query_as(
+        "SELECT id, user_id, organization_id FROM api_keys
+         WHERE token_hash = $1
+           AND revoked_at IS NULL
+           AND (expires_at IS NULL OR expires_at > now())",
+    )
+    .bind(&hash)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(|_| reject(StatusCode::INTERNAL_SERVER_ERROR, "api key lookup failed"))?;
+
+    let Some((key_id, user_id, organization_id)) = row else {
+        tx.commit().await.ok();
+        return Ok(None);
+    };
+
+    // Switch to tenant scope so the UPDATE is permitted by the normal
+    // tenant policy.
+    sqlx::query(&format!(
+        "SET LOCAL app.current_tenant_id = '{organization_id}'"
+    ))
+    .execute(&mut *tx)
+    .await
+    .ok();
+
+    // Best-effort: errors here do not fail authentication.
+    let _ = sqlx::query("UPDATE api_keys SET last_used_at = now() WHERE id = $1")
+        .bind(key_id)
+        .execute(&mut *tx)
+        .await;
+
+    tx.commit().await.map_err(|_| {
+        reject(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "api key auth: commit failed",
+        )
+    })?;
+
+    Ok(Some(Actor {
+        user_id,
+        session_id: Uuid::nil(),
+        organization_id,
+    }))
 }
 
 fn extract_session_cookie(parts: &Parts) -> Option<Uuid> {

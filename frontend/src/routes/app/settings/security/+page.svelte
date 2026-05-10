@@ -753,10 +753,10 @@
     {:else}
       <div class="space-y-3 py-2">
         <div
-          class="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/40 p-3"
+          class="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/40 p-3 space-y-2"
         >
-          <p class="text-xs font-medium text-amber-800 dark:text-amber-300 mb-2">
-            This token will not be shown again.
+          <p class="text-xs font-medium text-amber-800 dark:text-amber-300">
+            This token will not be shown again. Save it now.
           </p>
           <code
             class="block rounded bg-white dark:bg-zinc-900 border border-amber-200 dark:border-amber-800 px-3 py-2 font-mono text-sm break-all"
@@ -765,11 +765,18 @@
             {newKeyToken}
           </code>
         </div>
+
+        <div class="rounded-md border bg-muted/40 px-3 py-2 space-y-1">
+          <p class="text-xs font-medium text-muted-foreground">Usage</p>
+          <code class="block font-mono text-xs break-all text-foreground">
+            Authorization: Bearer {newKeyToken}
+          </code>
+        </div>
       </div>
 
       <DialogFooter>
         <Button variant="outline" onclick={copyApiKeyToken} data-testid="copy-api-key-token">
-          {newKeyTokenCopied ? 'Copied' : 'Copy'}
+          {newKeyTokenCopied ? 'Copied' : 'Copy token'}
         </Button>
         <Button onclick={closeApiKeyCreateModal} data-testid="api-key-done">Done</Button>
       </DialogFooter>
