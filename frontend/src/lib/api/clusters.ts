@@ -68,6 +68,22 @@ export async function destroyCluster(id: string, fetchImpl: typeof fetch = fetch
   }
 }
 
+export async function scaleWorkers(
+  id: string,
+  delta: number,
+  fetchImpl: typeof fetch = fetch
+): Promise<void> {
+  const response = await fetchImpl(`/api/v1/clusters/${id}/workers`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ delta })
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw await parseProblem(response, text);
+  }
+}
+
 export async function loadClusterCatalog(
   fetchImpl: typeof fetch = fetch
 ): Promise<{ regions: string[]; server_types: string[]; addons: string[] }> {

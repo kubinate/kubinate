@@ -18,7 +18,12 @@ export const load: LayoutServerLoad = async ({ locals, fetch, url }) => {
     }
 
     return {
-      session: { userId: me.user_id, organizationId: me.organization_id },
+      session: {
+        userId: me.user_id,
+        organizationId: me.organization_id,
+        displayName: me.display_name,
+        email: me.email
+      },
       mfa_state: me.mfa_state
     };
   } catch (err) {

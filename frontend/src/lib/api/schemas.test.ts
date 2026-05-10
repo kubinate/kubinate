@@ -16,7 +16,9 @@ const VALID_STATES: MfaState[] = ['not_required', 'must_enrol', 'must_assert', '
 const baseMeView = {
   user_id: '0190a000-0000-7000-8000-000000000001',
   session_id: '0190a000-0000-7000-8000-000000000002',
-  organization_id: '0190a000-0000-7000-8000-000000000003'
+  organization_id: '0190a000-0000-7000-8000-000000000003',
+  email: 'alice@example.com',
+  display_name: 'Alice'
 };
 
 describe('mfaStateSchema', () => {

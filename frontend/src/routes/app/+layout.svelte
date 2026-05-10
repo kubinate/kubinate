@@ -24,7 +24,7 @@
 
   interface Props {
     data: {
-      session: { userId: string; organizationId: string };
+      session: { userId: string; organizationId: string; displayName?: string; email?: string };
       mfa_state: MfaState | null;
     };
     children: import('svelte').Snippet;
@@ -44,13 +44,9 @@
     { label: 'Integrations', href: '/app/settings/integrations', icon: KeyRound }
   ];
 
-  let userInitial = $derived(
-    data.session.userId ? data.session.userId.charAt(0).toUpperCase() : 'U'
-  );
+  const userLabel = $derived(data.session.displayName || data.session.email || data.session.userId);
 
-  let truncatedUserId = $derived(
-    data.session.userId.length > 24 ? data.session.userId.slice(0, 24) + '…' : data.session.userId
-  );
+  let userInitial = $derived(userLabel.charAt(0).toUpperCase());
 
   function isActive(href: string): boolean {
     const pathname = page.url.pathname;
@@ -121,11 +117,8 @@
         <Avatar class="size-8 shrink-0">
           <AvatarFallback class="text-xs font-medium">{userInitial}</AvatarFallback>
         </Avatar>
-        <span
-          class="text-muted-foreground min-w-0 flex-1 truncate text-xs"
-          title={data.session.userId}
-        >
-          {truncatedUserId}
+        <span class="text-muted-foreground min-w-0 flex-1 truncate text-xs" title={userLabel}>
+          {userLabel}
         </span>
         <a
           href="/api/v1/auth/logout"

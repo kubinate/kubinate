@@ -50,6 +50,7 @@ use kubinate_integrations::{
 use kubinate_platform::{
     config::AppConfig,
     db,
+    error::PlatformError,
     secrets::{PgcryptoStore, SecretStore},
     telemetry,
 };
@@ -457,11 +458,22 @@ struct Version {
 async fn me(State(state): State<AppState>, actor: actor::Actor) -> Result<Json<MeView>, ApiError> {
     let mfa_state =
         kubinate_identity::session::mfa_state(&state.db, actor.user_id, actor.session_id).await?;
+    let row: Option<(String, String)> =
+        sqlx::query_as("SELECT email::text, display_name FROM users WHERE id = $1")
+            .bind(actor.user_id)
+            .fetch_optional(&state.db)
+            .await
+            .map_err(PlatformError::from)?;
+    let (email, display_name) = row
+        .ok_or_else(|| PlatformError::NotFound(format!("user/{}", actor.user_id)))
+        .map_err(ApiError::from)?;
     Ok(Json(MeView {
         user_id: actor.user_id,
         session_id: actor.session_id,
         organization_id: actor.organization_id,
         mfa_state,
+        email,
+        display_name,
     }))
 }
 
@@ -471,6 +483,8 @@ struct MeView {
     session_id: uuid::Uuid,
     organization_id: uuid::Uuid,
     mfa_state: kubinate_identity::session::MfaState,
+    email: String,
+    display_name: String,
 }
 
 async fn version() -> Json<Version> {

@@ -8,6 +8,7 @@
     loadClusterCatalog,
     destroyCluster,
     getClusterMetrics,
+    scaleWorkers,
     type MetricSample
   } from '$lib/api/clusters';
   import { installAddon, listAddons } from '$lib/api/addons';
@@ -69,6 +70,9 @@
   let installError = $state<string | null>(null);
   let installAddonSlug = $state<string | null>(null);
   let installVersion = $state('');
+
+  let scaleInFlight = $state(false);
+  let scaleError = $state<string | null>(null);
 
   let destroyConfirmName = $state('');
   let destroyModalOpen = $state(false);
@@ -358,6 +362,25 @@
     return step.replace(/_/g, ' ');
   }
 
+  async function doScale(delta: -1 | 1) {
+    if (!cluster) return;
+    scaleInFlight = true;
+    scaleError = null;
+    try {
+      await scaleWorkers(cluster.id, delta);
+      await refresh();
+    } catch (err) {
+      scaleError =
+        err instanceof ApiError
+          ? `${err.title}: ${err.detail}`
+          : err instanceof Error
+            ? err.message
+            : 'Unknown error';
+    } finally {
+      scaleInFlight = false;
+    }
+  }
+
   async function retry() {
     // Wires to ticket 05's destroy + re-trigger ticket 03's runner.
     // Until that runner is in place this just navigates back to the
@@ -412,7 +435,7 @@
 </script>
 
 <svelte:head>
-  <title>Cluster — Kubinate</title>
+  <title>{cluster?.name ?? 'Cluster'} — Kubinate</title>
 </svelte:head>
 
 {#if error}
@@ -449,7 +472,37 @@
             <dd>{cluster.server_type}</dd>
 
             <dt class="font-medium text-muted-foreground">Workers</dt>
-            <dd>{cluster.worker_count}</dd>
+            <dd>
+              {#if cluster.status === 'ready'}
+                <div class="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onclick={() => doScale(-1)}
+                    disabled={scaleInFlight || cluster.worker_count <= 1}
+                    aria-label="Remove a worker"
+                    class="flex size-6 items-center justify-center rounded border border-input bg-background text-sm font-medium hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40"
+                    >−</button
+                  >
+                  <span class="w-4 text-center tabular-nums">{cluster.worker_count}</span>
+                  <button
+                    type="button"
+                    onclick={() => doScale(1)}
+                    disabled={scaleInFlight || cluster.worker_count >= 10}
+                    aria-label="Add a worker"
+                    class="flex size-6 items-center justify-center rounded border border-input bg-background text-sm font-medium hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40"
+                    >+</button
+                  >
+                  {#if scaleInFlight}
+                    <Loader2 class="size-3.5 animate-spin text-muted-foreground" />
+                  {/if}
+                </div>
+                {#if scaleError}
+                  <p class="mt-1 text-xs text-destructive">{scaleError}</p>
+                {/if}
+              {:else}
+                {cluster.worker_count}
+              {/if}
+            </dd>
 
             <dt class="font-medium text-muted-foreground">Created</dt>
             <dd>{new Date(cluster.created_at).toLocaleString()}</dd>

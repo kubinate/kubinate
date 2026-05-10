@@ -230,7 +230,9 @@ export const meViewSchema = z.object({
   user_id: z.string().uuid(),
   session_id: z.string().uuid(),
   organization_id: z.string().uuid(),
-  mfa_state: mfaStateSchema
+  mfa_state: mfaStateSchema,
+  email: z.string(),
+  display_name: z.string()
 });
 export type MeView = z.infer<typeof meViewSchema>;
 
