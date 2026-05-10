@@ -51,6 +51,7 @@ webauthn-rs.workspace = true
 tonic.workspace = true
 prost.workspace = true
 async-trait.workspace = true
+argon2.workspace = true
 
 [dev-dependencies]
 hyper-util = { version = "0.1", features = ["tokio"] }

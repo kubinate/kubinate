@@ -19,6 +19,7 @@ mod audit_ctx;
 mod audit_log;
 mod auth;
 mod auth_passkey;
+mod auth_password;
 mod billing;
 mod clusters;
 mod integrations;
@@ -372,6 +373,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/metrics", get(metrics_endpoint))
         .route("/v1/me", get(me).patch(update_me))
         .nest("/v1/auth", auth::routes())
+        .nest("/v1/auth", auth_password::routes())
         .nest("/v1/auth/passkey", auth_passkey::routes())
         .nest("/v1/auth/recovery-codes", auth_passkey::recovery_routes())
         .nest("/v1/clusters", clusters::routes())
