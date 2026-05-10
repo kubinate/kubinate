@@ -58,7 +58,7 @@ use kubinate_platform::{
 };
 use kubinate_workflows::runner::LocalRunner;
 use secrecy::SecretString;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tokio::signal;
 use tower_http::{
     request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer},
@@ -370,7 +370,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/readyz", get(readyz))
         .route("/version", get(version))
         .route("/metrics", get(metrics_endpoint))
-        .route("/v1/me", get(me))
+        .route("/v1/me", get(me).patch(update_me))
         .nest("/v1/auth", auth::routes())
         .nest("/v1/auth/passkey", auth_passkey::routes())
         .nest("/v1/auth/recovery-codes", auth_passkey::recovery_routes())
@@ -489,6 +489,52 @@ struct MeView {
     mfa_state: kubinate_identity::session::MfaState,
     email: String,
     display_name: String,
+}
+
+#[derive(Deserialize)]
+struct UpdateMeRequest {
+    display_name: String,
+}
+
+/// `PATCH /v1/me` — update the calling user's personal display name.
+async fn update_me(
+    State(state): State<AppState>,
+    actor: actor::Actor,
+    Json(req): Json<UpdateMeRequest>,
+) -> Result<Json<MeView>, ApiError> {
+    let display_name = req.display_name.trim().to_string();
+    if display_name.is_empty() {
+        return Err(ApiError::from(PlatformError::Invalid(
+            "display_name must not be empty".into(),
+        )));
+    }
+    if display_name.len() > 100 {
+        return Err(ApiError::from(PlatformError::Invalid(
+            "display_name must be 100 characters or fewer".into(),
+        )));
+    }
+    let row: Option<(String, String)> = sqlx::query_as(
+        "UPDATE users SET display_name = $2 WHERE id = $1
+         RETURNING email::text, display_name",
+    )
+    .bind(actor.user_id)
+    .bind(&display_name)
+    .fetch_optional(&state.db)
+    .await
+    .map_err(PlatformError::from)?;
+    let (email, display_name) = row
+        .ok_or_else(|| PlatformError::NotFound(format!("user/{}", actor.user_id)))
+        .map_err(ApiError::from)?;
+    let mfa_state =
+        kubinate_identity::session::mfa_state(&state.db, actor.user_id, actor.session_id).await?;
+    Ok(Json(MeView {
+        user_id: actor.user_id,
+        session_id: actor.session_id,
+        organization_id: actor.organization_id,
+        mfa_state,
+        email,
+        display_name,
+    }))
 }
 
 async fn version() -> Json<Version> {
