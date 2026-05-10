@@ -57,6 +57,12 @@ where
             {
                 let org_id =
                     resolve_organization(&app_state, &parts.headers, session.user_id).await?;
+                // Fire-and-forget: bump last_used_at at most once per 5 min.
+                let bump_pool = app_state.db.clone();
+                let bump_id = session.id;
+                tokio::spawn(async move {
+                    let _ = kubinate_identity::session::bump_activity(&bump_pool, bump_id).await;
+                });
                 return Ok(Actor {
                     user_id: session.user_id,
                     session_id: session.id,

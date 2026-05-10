@@ -290,6 +290,32 @@ pub async fn revoke(pool: &PgPool, id: Uuid) -> Result<(), PlatformError> {
 ///
 /// # Errors
 /// Returns [`PlatformError`] if the database query fails.
+/// Update `last_used_at` for a session, but only if it hasn't been updated
+/// in the past 5 minutes. This keeps the member list `last_active_at` field
+/// meaningful without a write on every single request.
+///
+/// Errors are intentionally ignored by callers — a failed bump should never
+/// fail the request.
+pub async fn bump_activity(pool: &PgPool, id: Uuid) -> Result<(), PlatformError> {
+    sqlx::query(
+        "UPDATE sessions SET last_used_at = now()
+         WHERE id = $1
+           AND revoked_at IS NULL
+           AND last_used_at < now() - interval '5 minutes'",
+    )
+    .bind(id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// Look up a non-revoked, non-expired session by its primary key.
+///
+/// Returns `None` when the session does not exist, has expired, or has been
+/// revoked — the caller treats all three cases as "unauthenticated".
+///
+/// # Errors
+/// Returns [`PlatformError`] if the database query fails.
 pub async fn resolve(pool: &PgPool, id: Uuid) -> Result<Option<Session>, PlatformError> {
     let row = sqlx::query_as::<
         _,
