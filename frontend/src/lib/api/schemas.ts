@@ -320,6 +320,26 @@ export const recoveryRedeemResponseSchema = z.object({
 export type RecoveryRedeemResponse = z.infer<typeof recoveryRedeemResponseSchema>;
 
 // -----------------------------------------------------------------------------
+// API keys (Sprint 12)
+// -----------------------------------------------------------------------------
+
+export const apiKeyViewSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string(),
+  token_prefix: z.string(),
+  created_at: z.string(),
+  last_used_at: z.string().nullable().optional()
+});
+export type ApiKeyView = z.infer<typeof apiKeyViewSchema>;
+
+export const createApiKeyResponseSchema = z.object({
+  view: apiKeyViewSchema,
+  /** Plaintext token — shown once, not retrievable again. */
+  token: z.string()
+});
+export type CreateApiKeyResponse = z.infer<typeof createApiKeyResponseSchema>;
+
+// -----------------------------------------------------------------------------
 // Audit log (Sprint 10)
 // -----------------------------------------------------------------------------
 

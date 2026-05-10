@@ -14,6 +14,7 @@
 
 mod actor;
 mod agent;
+mod api_keys;
 mod audit_ctx;
 mod audit_log;
 mod auth;
@@ -381,6 +382,7 @@ async fn main() -> anyhow::Result<()> {
         .nest("/v1/organizations/{org_id}", audit_log::routes())
         .nest("/v1/invites", team::invite_accept_route())
         .nest("/v1/billing", billing::routes())
+        .nest("/v1/api-keys", api_keys::routes())
         .nest("/v1/observability", observability::routes())
         .with_state(state.clone())
         .layer(SetRequestIdLayer::new(
