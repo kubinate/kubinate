@@ -1,14 +1,23 @@
 <script lang="ts">
+  import { onMount, onDestroy, untrack } from 'svelte';
   import type { PageData } from './$types';
   import type { ClusterView } from '$lib/api/schemas';
+  import { listClusters } from '$lib/api/clusters';
   import { Card, CardHeader, CardTitle, CardContent } from '$lib/components/ui/card';
   import { Badge } from '$lib/components/ui/badge';
+  import { Input } from '$lib/components/ui/input';
   import { Plus, Server } from 'lucide-svelte';
-  import { SvelteMap } from 'svelte/reactivity';
+  import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 
   let { data }: { data: PageData } = $props();
 
-  const clusters: ClusterView[] = $derived(data.clusters);
+  const TRANSIENT = new Set(['pending', 'provisioning', 'scaling', 'destroying']);
+  const POLL_MS = 3000;
+
+  let clusters = $state<ClusterView[]>(untrack(() => data.clusters));
+  let search = $state('');
+  let activeStatuses = new SvelteSet<string>();
+  let pollHandle: ReturnType<typeof setInterval> | null = null;
 
   function badgeVariant(status: ClusterView['status']): 'default' | 'secondary' | undefined {
     if (status === 'ready') return 'default';
@@ -61,6 +70,67 @@
       .filter(([, n]) => n > 0)
       .map(([s, n]) => `${n} ${s}`)
       .join(' · ');
+  });
+
+  const hasTransient = $derived(clusters.some((c) => TRANSIENT.has(c.status)));
+
+  const availableStatuses = $derived.by(() => {
+    const order: ClusterView['status'][] = [
+      'provisioning',
+      'scaling',
+      'ready',
+      'failed',
+      'destroyed'
+    ];
+    const present = new Set(clusters.map((c) => c.status));
+    return order.filter((s) => present.has(s));
+  });
+
+  const filteredClusters = $derived.by(() => {
+    let list = clusters;
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      list = list.filter((c) => c.name.toLowerCase().includes(q));
+    }
+    if (activeStatuses.size > 0) {
+      list = list.filter((c) => activeStatuses.has(c.status));
+    }
+    return list;
+  });
+
+  function startPoll() {
+    if (pollHandle) return;
+    pollHandle = setInterval(async () => {
+      clusters = await listClusters().catch(() => clusters);
+    }, POLL_MS);
+  }
+
+  function stopPoll() {
+    if (pollHandle) {
+      clearInterval(pollHandle);
+      pollHandle = null;
+    }
+  }
+
+  $effect(() => {
+    if (hasTransient) {
+      startPoll();
+    } else {
+      stopPoll();
+    }
+  });
+
+  function toggleStatus(s: string) {
+    if (activeStatuses.has(s)) activeStatuses.delete(s);
+    else activeStatuses.add(s);
+  }
+
+  onMount(async () => {
+    clusters = await listClusters().catch(() => clusters);
+  });
+
+  onDestroy(() => {
+    stopPoll();
   });
 </script>
 
@@ -117,8 +187,32 @@
       </div>
     </div>
 
+    <div class="flex flex-col gap-3 mb-4">
+      <Input bind:value={search} placeholder="Search clusters…" class="max-w-xs" />
+      {#if availableStatuses.length > 1}
+        <div class="flex flex-wrap gap-2">
+          {#each availableStatuses as s (s)}
+            <button
+              onclick={() => toggleStatus(s)}
+              class="rounded-full px-3 py-1 text-xs font-medium border transition-colors capitalize
+                {activeStatuses.has(s)
+                ? 'bg-primary text-primary-foreground border-primary'
+                : 'bg-background text-muted-foreground border-border hover:border-foreground'}"
+            >
+              {s}
+            </button>
+          {/each}
+        </div>
+      {/if}
+    </div>
+
     <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {#each clusters as cluster (cluster.id)}
+      {#if filteredClusters.length === 0}
+        <p class="text-sm text-muted-foreground py-8 text-center col-span-full">
+          No clusters match your filter.
+        </p>
+      {/if}
+      {#each filteredClusters as cluster (cluster.id)}
         <a href="/app/clusters/{cluster.id}" class="group block outline-none">
           <Card
             class="h-full transition-shadow group-hover:shadow-md group-focus-visible:ring-2 group-focus-visible:ring-ring"
@@ -129,7 +223,12 @@
                 {#if isDestructive(cluster.status)}
                   <Badge class="shrink-0 bg-destructive text-white">{cluster.status}</Badge>
                 {:else}
-                  <Badge variant={badgeVariant(cluster.status)} class="shrink-0 capitalize">
+                  <Badge
+                    variant={badgeVariant(cluster.status)}
+                    class="shrink-0 capitalize {TRANSIENT.has(cluster.status)
+                      ? 'animate-pulse'
+                      : ''}"
+                  >
                     {cluster.status}
                   </Badge>
                 {/if}
