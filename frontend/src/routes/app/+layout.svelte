@@ -20,6 +20,7 @@
   } from '$lib/components/ui/sidebar';
   import { Badge } from '$lib/components/ui/badge';
   import {
+    Building2,
     CreditCard,
     FileText,
     KeyRound,
@@ -47,6 +48,7 @@
   ];
 
   const navSettings = [
+    { label: 'General', href: '/app/settings/general', icon: Building2 },
     { label: 'Team', href: '/app/settings/team', icon: Users },
     { label: 'Billing', href: '/app/settings/billing', icon: CreditCard },
     { label: 'Security', href: '/app/settings/security', icon: Shield },

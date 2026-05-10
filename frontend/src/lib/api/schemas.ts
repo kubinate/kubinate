@@ -340,6 +340,19 @@ export const createApiKeyResponseSchema = z.object({
 export type CreateApiKeyResponse = z.infer<typeof createApiKeyResponseSchema>;
 
 // -----------------------------------------------------------------------------
+// Organization (Sprint 14)
+// -----------------------------------------------------------------------------
+
+export const orgViewSchema = z.object({
+  id: z.string().uuid(),
+  slug: z.string(),
+  display_name: z.string(),
+  created_at: z.string(),
+  updated_at: z.string()
+});
+export type OrgView = z.infer<typeof orgViewSchema>;
+
+// -----------------------------------------------------------------------------
 // Audit log (Sprint 10)
 // -----------------------------------------------------------------------------
 

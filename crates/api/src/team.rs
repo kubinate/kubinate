@@ -33,6 +33,7 @@ use crate::{
 /// Mount under `/v1/organizations/:org_id`.
 pub fn org_routes() -> Router<AppState> {
     Router::new()
+        .route("/", get(get_org).patch(update_org))
         .route("/members", get(list_members))
         .route(
             "/members/{user_id}",
@@ -271,4 +272,125 @@ async fn lookup_user_email(state: &AppState, user_id: Uuid) -> Result<String, Ap
 
 fn invite_to_api(err: InviteError) -> ApiError {
     ApiError::from(PlatformError::from(err))
+}
+
+// ---------------------------------------------------------------------------
+// Organization settings (Sprint 14)
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize)]
+struct OrgView {
+    id: Uuid,
+    slug: String,
+    display_name: String,
+    created_at: OffsetDateTime,
+    updated_at: OffsetDateTime,
+}
+
+#[derive(Deserialize)]
+struct UpdateOrgRequest {
+    display_name: String,
+}
+
+/// `GET /v1/organizations/:org_id` — read org info. Any member.
+async fn get_org(
+    State(state): State<AppState>,
+    actor: Actor,
+    Path(org_id): Path<Uuid>,
+) -> Result<Json<OrgView>, ApiError> {
+    if actor.organization_id != org_id {
+        return Err(ApiError::from(PlatformError::Forbidden(
+            "actor's organization does not match the path".into(),
+        )));
+    }
+    let mut tx = state.db.begin().await.map_err(PlatformError::from)?;
+    sqlx::query(&format!(
+        "SET LOCAL app.current_tenant_id = '{org_id}'"
+    ))
+    .execute(&mut *tx)
+    .await
+    .map_err(PlatformError::from)?;
+
+    let row: Option<(Uuid, String, String, OffsetDateTime, OffsetDateTime)> =
+        sqlx::query_as(
+            "SELECT id, slug, display_name, created_at, updated_at
+             FROM organizations WHERE id = $1",
+        )
+        .bind(org_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(PlatformError::from)?;
+
+    tx.commit().await.map_err(PlatformError::from)?;
+
+    let (id, slug, display_name, created_at, updated_at) =
+        row.ok_or_else(|| ApiError::from(PlatformError::NotFound(format!("org/{org_id}"))))?;
+
+    Ok(Json(OrgView {
+        id,
+        slug,
+        display_name,
+        created_at,
+        updated_at,
+    }))
+}
+
+/// `PATCH /v1/organizations/:org_id` — update display name. Owner only.
+async fn update_org(
+    State(state): State<AppState>,
+    owner: OwnerActor,
+    Path(org_id): Path<Uuid>,
+    Json(req): Json<UpdateOrgRequest>,
+) -> Result<Json<OrgView>, ApiError> {
+    let actor = owner.inner;
+    if actor.organization_id != org_id {
+        return Err(ApiError::from(PlatformError::Forbidden(
+            "actor's organization does not match the path".into(),
+        )));
+    }
+    let display_name = req.display_name.trim().to_string();
+    if display_name.is_empty() {
+        return Err(ApiError::from(PlatformError::Invalid(
+            "display_name must not be empty".into(),
+        )));
+    }
+    if display_name.len() > 100 {
+        return Err(ApiError::from(PlatformError::Invalid(
+            "display_name must be 100 characters or fewer".into(),
+        )));
+    }
+
+    let mut tx = state.db.begin().await.map_err(PlatformError::from)?;
+    sqlx::query(&format!(
+        "SET LOCAL app.current_tenant_id = '{org_id}'"
+    ))
+    .execute(&mut *tx)
+    .await
+    .map_err(PlatformError::from)?;
+
+    let row: Option<(Uuid, String, String, OffsetDateTime, OffsetDateTime)> =
+        sqlx::query_as(
+            "UPDATE organizations
+             SET display_name = $2
+             WHERE id = $1
+             RETURNING id, slug, display_name, created_at, updated_at",
+        )
+        .bind(org_id)
+        .bind(&display_name)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(PlatformError::from)?;
+
+    tx.commit().await.map_err(PlatformError::from)?;
+
+    let (id, slug, display_name, created_at, updated_at) =
+        row.ok_or_else(|| ApiError::from(PlatformError::NotFound(format!("org/{org_id}"))))?;
+
+    Ok(Json(OrgView {
+        id,
+        slug,
+        display_name,
+        created_at,
+        updated_at,
+    }))
 }
