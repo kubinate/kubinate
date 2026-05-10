@@ -11,7 +11,7 @@
     scaleWorkers,
     type MetricSample
   } from '$lib/api/clusters';
-  import { installAddon, listAddons } from '$lib/api/addons';
+  import { installAddon, listAddons, uninstallAddon } from '$lib/api/addons';
   import { errorCategoryMessage, type AddonView, type ClusterView } from '$lib/api/schemas';
   import { Download, Loader2 } from 'lucide-svelte';
   import { Badge } from '$lib/components/ui/badge';
@@ -73,6 +73,9 @@
 
   let scaleInFlight = $state(false);
   let scaleError = $state<string | null>(null);
+
+  let uninstallInFlight = $state<string | null>(null);
+  let uninstallError = $state<string | null>(null);
 
   let destroyConfirmName = $state('');
   let destroyModalOpen = $state(false);
@@ -381,6 +384,25 @@
     }
   }
 
+  async function doUninstall(addonId: string) {
+    if (!cluster) return;
+    uninstallInFlight = addonId;
+    uninstallError = null;
+    try {
+      await uninstallAddon(cluster.id, addonId);
+      await refresh();
+    } catch (err) {
+      uninstallError =
+        err instanceof ApiError
+          ? `${err.title}: ${err.detail}`
+          : err instanceof Error
+            ? err.message
+            : 'Unknown error';
+    } finally {
+      uninstallInFlight = null;
+    }
+  }
+
   async function retry() {
     // Wires to ticket 05's destroy + re-trigger ticket 03's runner.
     // Until that runner is in place this just navigates back to the
@@ -645,6 +667,7 @@
                   <TableHead>Add-on</TableHead>
                   <TableHead>Version</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -657,10 +680,30 @@
                         {describeAddonStatus(a)}
                       </Badge>
                     </TableCell>
+                    <TableCell>
+                      {#if a.status === 'ready' || a.status === 'failed'}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onclick={() => doUninstall(a.id)}
+                          disabled={uninstallInFlight === a.id}
+                          data-testid={`uninstall-${a.addon}`}
+                        >
+                          {#if uninstallInFlight === a.id}
+                            <Loader2 class="mr-2 h-4 w-4 animate-spin" />
+                          {/if}
+                          Uninstall
+                        </Button>
+                      {/if}
+                    </TableCell>
                   </TableRow>
                 {/each}
               </TableBody>
             </Table>
+          {/if}
+
+          {#if uninstallError}
+            <p class="text-xs text-destructive mt-2">{uninstallError}</p>
           {/if}
 
           {#if cluster.status === 'ready' && installableSlugs.length > 0}

@@ -14,7 +14,7 @@ use axum::{
         sse::{Event, KeepAlive, Sse},
         IntoResponse, Response,
     },
-    routing::{get, post},
+    routing::{delete, get, post},
     Json, Router,
 };
 use futures::stream::{self, Stream};
@@ -23,6 +23,7 @@ use kubinate_cluster::{
     service::{ALLOWED_REGIONS, ALLOWED_SERVER_TYPES},
     status::{error_category, ErrorCategory},
 };
+use kubinate_addons::model::AddonStatus;
 use kubinate_integrations::hetzner::Client as HetznerClient;
 use kubinate_platform::{audit, error::PlatformError};
 use kubinate_workflows::events::ClusterEvent;
@@ -53,6 +54,7 @@ pub fn routes() -> Router<AppState> {
         .route("/{id}", get(read).delete(destroy))
         .route("/{id}/kubeconfig", get(download_kubeconfig))
         .route("/{id}/addons", post(install_addon).get(list_addons))
+        .route("/{id}/addons/{addon_id}", delete(uninstall_addon))
         .route("/{id}/workers", post(scale_workers))
         .route("/{id}/events", get(stream_events))
         .route("/{id}/metrics", get(query_metrics))
@@ -621,7 +623,7 @@ struct AddonView {
     addon: String,
     version: String,
     helm_release: String,
-    status: kubinate_addons::model::AddonStatus,
+    status: AddonStatus,
     status_reason: Option<String>,
     created_at: OffsetDateTime,
     updated_at: OffsetDateTime,
@@ -826,6 +828,89 @@ async fn list_addons(
         .list_for_cluster(actor.organization_id, cluster_id)
         .await?;
     Ok(Json(rows.into_iter().map(AddonView::from).collect()))
+}
+
+/// `DELETE /v1/clusters/:id/addons/:addon_id` — uninstall an addon.
+///
+/// Gated on Owner/Admin. The addon must be in `ready` or `failed`
+/// state; any other state returns 409. Sets `status = uninstalling`
+/// synchronously, then spawns the background Helm workflow.
+async fn uninstall_addon(
+    State(state): State<AppState>,
+    owner: OwnerActor,
+    headers: HeaderMap,
+    Path((cluster_id, addon_id)): Path<(Uuid, Uuid)>,
+) -> Result<impl IntoResponse, ApiError> {
+    let actor = owner.inner;
+
+    let addon = state
+        .addon_service
+        .get_by_id(actor.organization_id, addon_id)
+        .await?
+        .ok_or_else(|| {
+            ApiError::from(PlatformError::NotFound(format!("addon/{addon_id}")))
+        })?;
+
+    if addon.cluster_id != cluster_id {
+        return Err(ApiError::from(PlatformError::NotFound(format!(
+            "addon/{addon_id}"
+        ))));
+    }
+
+    if !matches!(addon.status, AddonStatus::Ready | AddonStatus::Failed) {
+        return Err(ApiError::from(PlatformError::Conflict(format!(
+            "addon must be ready or failed to uninstall (current: {:?})",
+            addon.status
+        ))));
+    }
+
+    let audit = audit_ctx::from_actor_and_headers(&actor, &headers);
+    state
+        .addon_service
+        .update_status(
+            actor.organization_id,
+            addon_id,
+            AddonStatus::Uninstalling,
+            None,
+            &audit,
+        )
+        .await?;
+
+    let spec = kubinate_addons::catalog::lookup(&addon.addon)?;
+    let namespace = spec.namespace.to_string();
+
+    let kubeconfig = state
+        .cluster_service
+        .fetch_kubeconfig(actor.organization_id, cluster_id)
+        .await?;
+    let kubeconfig_path =
+        std::env::temp_dir().join(format!("kubinate-kc-{}.yaml", Uuid::now_v7()));
+    if let Err(err) = tokio::fs::write(&kubeconfig_path, kubeconfig.expose_secret()).await {
+        return Err(ApiError::from(PlatformError::Internal(anyhow::anyhow!(
+            "stage kubeconfig: {err}"
+        ))));
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = tokio::fs::set_permissions(
+            &kubeconfig_path,
+            std::fs::Permissions::from_mode(0o600),
+        )
+        .await;
+    }
+
+    state.runner.spawn_uninstall_addon(
+        actor.organization_id,
+        addon_id,
+        addon.helm_release.clone(),
+        namespace,
+        kubeconfig_path,
+    );
+
+    let mut view = AddonView::from(addon);
+    view.status = AddonStatus::Uninstalling;
+    Ok((StatusCode::ACCEPTED, Json(view)))
 }
 
 #[derive(Deserialize)]

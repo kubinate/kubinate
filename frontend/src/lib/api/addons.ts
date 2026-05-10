@@ -56,3 +56,15 @@ export async function installAddon(
   });
   return parseResponse(response, addonViewSchema);
 }
+
+/** `DELETE /v1/clusters/:id/addons/:addonId` */
+export async function uninstallAddon(
+  clusterId: string,
+  addonId: string,
+  fetchImpl: typeof fetch = fetch
+): Promise<AddonView> {
+  const response = await fetchImpl(`/api/v1/clusters/${clusterId}/addons/${addonId}`, {
+    method: 'DELETE'
+  });
+  return parseResponse(response, addonViewSchema);
+}

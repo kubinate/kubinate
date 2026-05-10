@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use crate::{
     catalog,
-    model::{ClusterAddon, NewAddon},
+    model::{AddonStatus, ClusterAddon, NewAddon},
     repository::AddonRepository,
 };
 
@@ -65,6 +65,36 @@ impl AddonService {
     ) -> Result<Vec<ClusterAddon>, PlatformError> {
         self.repo
             .list_for_cluster(organization_id, cluster_id)
+            .await
+    }
+
+    /// Fetch a single addon by id within the tenant scope.
+    ///
+    /// # Errors
+    /// Returns [`PlatformError`] if the database query fails.
+    pub async fn get_by_id(
+        &self,
+        organization_id: Uuid,
+        id: Uuid,
+    ) -> Result<Option<ClusterAddon>, PlatformError> {
+        self.repo.get_by_id(organization_id, id).await
+    }
+
+    /// Update the lifecycle status of an addon. Thin pass-through used
+    /// by the API handler before spawning the background runner.
+    ///
+    /// # Errors
+    /// Returns [`PlatformError`] if the database query fails.
+    pub async fn update_status(
+        &self,
+        organization_id: Uuid,
+        id: Uuid,
+        status: AddonStatus,
+        reason: Option<&str>,
+        audit: &AuditContext,
+    ) -> Result<(), PlatformError> {
+        self.repo
+            .update_status(organization_id, id, status, reason, audit)
             .await
     }
 }

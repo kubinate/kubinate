@@ -58,6 +58,15 @@ pub trait HelmExecutor: Send + Sync {
         kubeconfig_path: &std::path::Path,
         params: &InstallParams,
     ) -> Result<(), HelmError>;
+
+    /// Run `helm uninstall`. Idempotent — `release: not found` is
+    /// treated as success so re-running after a prior uninstall is safe.
+    async fn uninstall(
+        &self,
+        kubeconfig_path: &std::path::Path,
+        release: &str,
+        namespace: &str,
+    ) -> Result<(), HelmError>;
 }
 
 /// Real `helm` binary wrapper.
@@ -144,5 +153,50 @@ impl HelmExecutor for HelmCliExecutor {
                 stderr: stderr.chars().take(2048).collect(),
             })
         }
+    }
+
+    async fn uninstall(
+        &self,
+        kubeconfig_path: &std::path::Path,
+        release: &str,
+        namespace: &str,
+    ) -> Result<(), HelmError> {
+        let bin = self
+            .helm_path
+            .clone()
+            .unwrap_or_else(|| PathBuf::from("helm"));
+        let mut cmd = Command::new(&bin);
+        cmd.env("KUBECONFIG", kubeconfig_path);
+        cmd.arg("uninstall")
+            .arg(release)
+            .arg("--namespace")
+            .arg(namespace)
+            .arg("--wait")
+            .arg("--timeout")
+            .arg("5m");
+        cmd.kill_on_drop(true);
+
+        let result = tokio::time::timeout(self.command_timeout, cmd.output()).await;
+
+        let output = match result {
+            Ok(Ok(out)) => out,
+            Ok(Err(e)) => return Err(HelmError::Transport(anyhow::anyhow!("spawn helm: {e}"))),
+            Err(_) => return Err(HelmError::Timeout(self.command_timeout)),
+        };
+
+        if output.status.success() {
+            return Ok(());
+        }
+
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        // Treat "release: not found" as success — idempotent uninstall.
+        if stderr.contains("release: not found") {
+            return Ok(());
+        }
+
+        Err(HelmError::NonZeroExit {
+            code: output.status.code().unwrap_or(-1),
+            stderr: stderr.chars().take(2048).collect(),
+        })
     }
 }

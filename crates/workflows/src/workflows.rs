@@ -720,6 +720,18 @@ mod tests {
                 None => Ok(()),
             }
         }
+
+        async fn uninstall(
+            &self,
+            _kubeconfig: &std::path::Path,
+            _release: &str,
+            _namespace: &str,
+        ) -> Result<(), HelmError> {
+            match &self.fail_with {
+                Some(_) => Err(HelmError::Timeout(std::time::Duration::from_secs(1))),
+                None => Ok(()),
+            }
+        }
     }
 
     #[tokio::test]
