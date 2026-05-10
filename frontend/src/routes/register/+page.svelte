@@ -1,32 +1,29 @@
 <script lang="ts">
-  import { page } from '$app/state';
   import { goto } from '$app/navigation';
-  import { loginPassword } from '$lib/api/auth';
-  import { ApiError } from '$lib/api/_problem';
+  import { register } from '$lib/api/auth';
 
   let email = $state('');
+  let displayName = $state('');
   let password = $state('');
   let loading = $state(false);
-  let formError = $state<string | null>(null);
-
-  const urlError = $derived(page.url.searchParams.get('error'));
+  let error = $state<string | null>(null);
 
   async function handleSubmit(e: SubmitEvent) {
     e.preventDefault();
-    formError = null;
+    error = null;
     loading = true;
     try {
-      await loginPassword(email, password);
+      await register(email, displayName, password);
       await goto('/app');
     } catch (err) {
-      formError = err instanceof Error ? err.message : 'Sign in failed. Please try again.';
+      error = err instanceof Error ? err.message : 'Registration failed. Please try again.';
     } finally {
       loading = false;
     }
   }
 </script>
 
-<svelte:head><title>Sign in — Kubinate</title></svelte:head>
+<svelte:head><title>Create account — Kubinate</title></svelte:head>
 
 <div class="relative flex min-h-svh flex-col items-center justify-center bg-zinc-950 px-4 py-12">
   <div
@@ -46,20 +43,9 @@
 
     <div class="space-y-5 rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl">
       <div class="text-center">
-        <h1 class="text-lg font-semibold text-white">Sign in</h1>
-        <p class="mt-1 text-sm text-zinc-500">to continue to Kubinate</p>
+        <h1 class="text-lg font-semibold text-white">Create account</h1>
+        <p class="mt-1 text-sm text-zinc-500">to get started with Kubinate</p>
       </div>
-
-      {#if urlError}
-        <div
-          class="rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2.5 text-sm text-red-400"
-          role="alert"
-        >
-          {urlError === 'access_denied'
-            ? 'GitHub authorisation was denied.'
-            : 'Sign-in failed. Please try again.'}
-        </div>
-      {/if}
 
       <a
         href="/api/v1/auth/github/start?redirect_to=/app"
@@ -80,21 +66,20 @@
       </div>
 
       <form onsubmit={handleSubmit} class="space-y-3">
-        {#if formError}
+        {#if error}
           <div
             class="rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2.5 text-sm text-red-400"
             role="alert"
           >
-            {formError}
+            {error}
           </div>
         {/if}
 
         <div>
-          <label for="login-email" class="mb-1.5 block text-xs font-medium text-zinc-400"
-            >Email</label
+          <label for="reg-email" class="mb-1.5 block text-xs font-medium text-zinc-400">Email</label
           >
           <input
-            id="login-email"
+            id="reg-email"
             type="email"
             bind:value={email}
             required
@@ -105,21 +90,33 @@
         </div>
 
         <div>
-          <div class="mb-1.5 flex items-center justify-between">
-            <label for="login-password" class="block text-xs font-medium text-zinc-400"
-              >Password</label
-            >
-            <button type="button" class="text-xs text-zinc-500 transition hover:text-zinc-300"
-              >Forgot password?</button
-            >
-          </div>
+          <label for="reg-name" class="mb-1.5 block text-xs font-medium text-zinc-400"
+            >Display name</label
+          >
           <input
-            id="login-password"
+            id="reg-name"
+            type="text"
+            bind:value={displayName}
+            required
+            autocomplete="name"
+            placeholder="Ada Lovelace"
+            maxlength={100}
+            class="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white placeholder-zinc-600 outline-none transition focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/40"
+          />
+        </div>
+
+        <div>
+          <label for="reg-password" class="mb-1.5 block text-xs font-medium text-zinc-400"
+            >Password</label
+          >
+          <input
+            id="reg-password"
             type="password"
             bind:value={password}
             required
-            autocomplete="current-password"
-            placeholder="••••••••"
+            autocomplete="new-password"
+            placeholder="Min. 8 characters"
+            minlength={8}
             class="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white placeholder-zinc-600 outline-none transition focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/40"
           />
         </div>
@@ -129,14 +126,14 @@
           disabled={loading}
           class="w-full rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {loading ? 'Signing in…' : 'Sign in'}
+          {loading ? 'Creating account…' : 'Create account'}
         </button>
       </form>
     </div>
 
     <p class="mt-4 text-center text-sm text-zinc-600">
-      Don't have an account?
-      <a href="/register" class="text-zinc-300 transition hover:text-white">Sign up</a>
+      Already have an account?
+      <a href="/login" class="text-zinc-300 transition hover:text-white">Sign in</a>
     </p>
   </div>
 </div>
