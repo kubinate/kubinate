@@ -28,6 +28,7 @@
     LogOut,
     Puzzle,
     Shield,
+    User,
     Users
   } from 'lucide-svelte';
   import type { MfaState } from '$lib/api/schemas';
@@ -48,6 +49,7 @@
   ];
 
   const navSettings = [
+    { label: 'Profile', href: '/app/settings/profile', icon: User },
     { label: 'General', href: '/app/settings/general', icon: Building2 },
     { label: 'Team', href: '/app/settings/team', icon: Users },
     { label: 'Billing', href: '/app/settings/billing', icon: CreditCard },
